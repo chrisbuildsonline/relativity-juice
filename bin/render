@@ -1,0 +1,8 @@
+#!/bin/sh
+# Detached render (survives the calling shell): extra args go to scripts/render.py.
+# Log: out/render.log, pid: out/render.pid. Rerun to resume; it skips finished frames.
+cd "$(dirname "$0")/.." || exit 1
+mkdir -p out
+setsid nohup sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/render.py -- "$@" >> out/render.log 2>&1 < /dev/null &
+echo $! > out/render.pid
+echo "render started, pid $!, log out/render.log"

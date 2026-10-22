@@ -1,0 +1,6 @@
+#!/bin/sh
+# CPU-only preview: every 15th frame at 480x270, 4 samples -> out/preview/ and out/preview.mp4.
+cd "$(dirname "$0")/.." || exit 1
+sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/render.py -- \
+  --out out/preview --step 15 --width 480 --height 270 --samples 4 --device cpu || exit 1
+python3 -m src.encode out/preview out/preview.mp4 6
