@@ -9,9 +9,10 @@ from src.flight import time_of
 from src.relativity import beta_at, gamma
 
 BAR_W = 1.2  # bar length at beta = 1, camera-space units
-CORNER = (-1.55, -0.55, -5.0)  # text origin in camera space: lower-left, 5 units ahead
-GLOW = (0.25, 0.85, 1.0, 1.0)
-STRENGTH = 4.0
+CORNER = (-1.5, -0.65, -5.0)  # text origin in camera space: lower-left, 5 units ahead
+GLOW = (0.0, 0.45, 1.0, 1.0)
+STRENGTH = 0.9 # AgX desaturates anything brighter towards white
+TEXT_SIZE = 0.12
 
 
 def gauge_text(beta):
@@ -60,17 +61,18 @@ def add_gauge(scene, camera):
             bpy.data.objects.remove(bpy.data.objects[name])
     x, y, z = CORNER
     curve = bpy.data.curves.new("GaugeText", "FONT")  # default font: Blender's bundled one
-    curve.size = 0.2
+    curve.size = TEXT_SIZE
     curve.materials.append(_material("GaugeText", STRENGTH))
     text = bpy.data.objects.new("GaugeText", curve)
     text.parent = camera
     text.location = CORNER
     scene.collection.objects.link(text)
-    bar_y = y - 0.32
-    _strip(scene, camera, "GaugeTrack", (x, bar_y, z), 0.05, _material("GaugeTrack", STRENGTH * 0.15)).scale.x = BAR_W
-    _strip(scene, camera, "GaugeBar", (x, bar_y, z + 0.01), 0.05, _material("GaugeBar", STRENGTH))
-    # opaque dark plate behind everything so it reads on a blown-out frame
-    _strip(scene, camera, "GaugePanel", (x - 0.1, bar_y - 0.1, z - 0.05), 0.75, _material("GaugePanel", 0.0)).scale.x = BAR_W + 0.2
+    bar_y = y - 0.24
+    _strip(scene, camera, "GaugeTrack", (x, bar_y, z), 0.03, _material("GaugeTrack", STRENGTH * 0.15)).scale.x = BAR_W
+    _strip(scene, camera, "GaugeBar", (x, bar_y, z + 0.01), 0.03, _material("GaugeBar", STRENGTH))
+    # opaque black plate behind everything: any see-through lets a beamed window wash over the glyphs
+    plate = _material("GaugePanel", 0.0)
+    _strip(scene, camera, "GaugePanel", (x - 0.08, bar_y - 0.03, z - 0.05), 0.39, plate).scale.x = BAR_W + 0.16
     if _on_frame not in bpy.app.handlers.frame_change_pre:
         bpy.app.handlers.frame_change_pre.append(_on_frame)
     _on_frame(scene)

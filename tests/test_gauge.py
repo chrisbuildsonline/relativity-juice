@@ -2,6 +2,7 @@ import unittest
 
 import bpy
 from bpy_extras.object_utils import world_to_camera_view
+from mathutils import Vector
 
 from src.city import build_city, setup_view
 from src.flight import FRAME_END, FRAME_START, time_of
@@ -84,6 +85,26 @@ class GaugeTest(unittest.TestCase):
                 with self.subTest(frame=f, obj=o.name):
                     p = world_to_camera_view(self.scene, self.cam, o.matrix_world.translation)
                     self.assertTrue(0.0 < p.x < 1.0 and 0.0 < p.y < 1.0 and p.z > 0.0, tuple(p))
+
+    def test_compact_with_margin_from_frame_edges(self):
+        for f in FRAMES:
+            self.scene.frame_set(f)
+            bpy.context.view_layer.update()
+            pts = [world_to_camera_view(self.scene, self.cam, o.matrix_world @ Vector(c))
+                   for o in self.objs for c in o.bound_box]
+            x0, x1 = min(p.x for p in pts), max(p.x for p in pts)
+            y0, y1 = min(p.y for p in pts), max(p.y for p in pts)
+            with self.subTest(frame=f):
+                self.assertGreaterEqual(x0, 0.04)
+                self.assertGreaterEqual(y0, 0.04)
+                self.assertLess(x1, 0.5)
+                self.assertLessEqual(y1 - y0, 0.2)
+
+    def test_panel_is_an_opaque_black_plate(self):
+        tree = bpy.data.objects["GaugePanel"].data.materials[0].node_tree
+        self.assertEqual({n.bl_idname for n in tree.nodes}, {"ShaderNodeEmission", "ShaderNodeOutputMaterial"})
+        glow = [n for n in tree.nodes if n.bl_idname == "ShaderNodeEmission"][0]
+        self.assertEqual(glow.inputs["Strength"].default_value, 0.0)
 
     def test_bundled_font(self):
         font = self.text.data.font
