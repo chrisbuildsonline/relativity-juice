@@ -3,12 +3,16 @@ import unittest
 import numpy as np
 
 from src.relativity import (
+    DISPLAY_BEAM_CAP,
+    UV_TINT_RGB,
     aberrate,
     beaming,
     beta_at,
     doppler,
+    display_beaming,
     gamma,
     shift_rgb,
+    uv_tint,
     wavelength_rgb,
 )
 
@@ -153,15 +157,39 @@ class WavelengthRgbTest(unittest.TestCase):
         np.testing.assert_array_equal(wavelength_rgb(np.array([300.0, 900.0])), 0.0)
 
 
+class DisplayBeamingTest(unittest.TestCase):
+    def test_monotone_bounded_and_unity_at_rest(self):
+        d = np.linspace(0.01, 100.0, 5000)
+        b = np.asarray(display_beaming(d))
+        self.assertTrue(np.all(np.diff(b) >= 0.0))
+        self.assertLessEqual(b.max(), DISPLAY_BEAM_CAP)
+        self.assertGreater(b.min(), 0.0)
+        self.assertAlmostEqual(display_beaming(1.0), 1.0)
+        self.assertIsInstance(display_beaming(2.0), float)
+
+    def test_compresses_d4(self):
+        self.assertLess(display_beaming(4.4), beaming(4.4))
+        self.assertLess(display_beaming(0.5), 1.0)  # still dims the receding side
+
+
 class ShiftRgbTest(unittest.TestCase):
     def test_unshifted_matches_wavelength(self):
         np.testing.assert_allclose(shift_rgb(550.0, 1.0), wavelength_rgb(550.0))
 
-    def test_extreme_blueshift_is_bright_violet_white(self):
+    def test_extreme_blueshift_is_saturated_violet(self):
         c = shift_rgb(550.0, 5.0)
-        self.assertTrue(np.all(c >= 0.8))
-        self.assertGreaterEqual(c[2], c[0])
-        self.assertGreaterEqual(c[2], c[1])
+        self.assertGreaterEqual(c[2], 0.9)
+        self.assertLessEqual(c[0], 0.5)
+        self.assertLessEqual(c[1], 0.3)
+
+    def test_deep_uv_keeps_rest_colours_apart(self):
+        blue, green, red = (shift_rgb(nm, 8.0) for nm in (440.0, 530.0, 640.0))  # all far below 260 nm
+        for c in (blue, green, red):
+            self.assertEqual(float(c[2]), 1.0)  # saturated: blue channel full, never white
+            self.assertLess(float(c.min()), 0.4)
+        self.assertGreater(red[0] - blue[0], 0.4)
+        self.assertGreater(green[1] - blue[1], 0.2)
+        np.testing.assert_allclose(uv_tint(np.array([420.0, 620.0, 700.0])), [UV_TINT_RGB[0], UV_TINT_RGB[2], UV_TINT_RGB[2]])
 
     def test_extreme_redshift_is_near_black(self):
         self.assertTrue(np.all(shift_rgb(550.0, 0.4) < 0.02))

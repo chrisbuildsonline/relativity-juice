@@ -59,9 +59,21 @@ def beaming(D):
     return _scalar_or_array(np.asarray(D, dtype=float) ** 4)
 
 
+DISPLAY_BEAM_EXP = 2.0  # D^4 compressed to D^2 (a 1/2 gamma) so a 1920x1080 AgX frame is not all white
+DISPLAY_BEAM_CAP = 2.0
+
+
+def display_beaming(D):
+    """Tone-mapped beaming used by the shader: min(D**2, 2), monotone in D and bounded."""
+    return _scalar_or_array(np.minimum(np.asarray(D, dtype=float) ** DISPLAY_BEAM_EXP, DISPLAY_BEAM_CAP))
+
+
 UV_EDGE_NM = 380.0
 IR_EDGE_NM = 780.0
-_UV_WHITE = np.array([0.85, 0.8, 1.0])  # where deep UV ends up (bright violet-white)
+# where deep UV ends up: saturated violet-blue (not white), nudged by the source's rest colour
+# (violet 420 nm, azure 530 nm, magenta 620 nm) so windows of different colours stay distinguishable
+UV_TINT_NM = (420.0, 530.0, 620.0)
+UV_TINT_RGB = ((0.2, 0.04, 1.0), (0.04, 0.35, 1.0), (0.8, 0.05, 1.0))
 _UV_RANGE_NM = 120.0  # blend finishes this far below the UV edge
 _IR_FADE_NM = 220.0  # red fade finishes this far above the IR edge (780 -> 1000)
 
@@ -82,13 +94,19 @@ def wavelength_rgb(nm):
     return np.where(inside[..., None], out, 0.0)
 
 
+def uv_tint(base_nm):
+    """Colour a source of rest wavelength base_nm turns into once shifted deep into the UV, (..., 3)."""
+    nm = np.asarray(base_nm, dtype=float)
+    return np.stack([np.interp(nm, UV_TINT_NM, ch) for ch in np.asarray(UV_TINT_RGB).T], axis=-1)
+
+
 def shift_rgb(base_nm, D):
     """Observed RGB of a source of wavelength base_nm seen with Doppler factor D.
 
     lambda_obs = base_nm / D (D > 0), broadcast over both inputs; output shape
     is the broadcast shape + (3,), always finite and in [0, 1]. Visible light
     uses wavelength_rgb. Below 380 nm the colour blends linearly from the
-    violet edge to bright violet-white over 120 nm; above 780 nm the red edge
+    violet edge to the saturated uv_tint(base_nm) over 120 nm; above 780 nm the red edge
     colour fades smoothly to black by 1000 nm. Beaming is not applied.
     """
     d = np.asarray(D, dtype=float)
@@ -99,7 +117,7 @@ def shift_rgb(base_nm, D):
 
     t = np.clip((UV_EDGE_NM - lam) / _UV_RANGE_NM, 0.0, 1.0)[..., None]
     uv_edge = wavelength_rgb(UV_EDGE_NM)
-    uv = uv_edge + t * (_UV_WHITE - uv_edge)
+    uv = uv_edge + t * (uv_tint(base_nm) - uv_edge)
 
     s = np.clip((lam - IR_EDGE_NM) / _IR_FADE_NM, 0.0, 1.0)
     ir = wavelength_rgb(IR_EDGE_NM) * (1.0 - s * s * (3.0 - 2.0 * s))[..., None]

@@ -6,7 +6,7 @@ import numpy as np
 
 from src.city import build_city, setup_view
 from src.flight import FRAME_END, FRAME_START, camera_y, time_of
-from src.relativity import aberrate, beta_at, doppler, gamma
+from src.relativity import DISPLAY_BEAM_CAP, DISPLAY_BEAM_EXP, UV_TINT_NM, UV_TINT_RGB, aberrate, beta_at, doppler, gamma
 from src.warp import animate_flight, add_warp, set_beta
 
 LENGTH = 600.0
@@ -170,22 +170,40 @@ class WarpMaterialTest(unittest.TestCase):
         self.assertEqual(ir.bl_idname, "ShaderNodeMix")
         uv = self._src(ir.inputs[7])  # RGBA B
         self.assertEqual(uv.bl_idname, "ShaderNodeMix")
-        self.assertEqual(tuple(round(c, 3) for c in uv.inputs[7].default_value[:3]), (0.85, 0.8, 1.0))
+        ramp = self._src(uv.inputs[7])  # UV colour = relativity.uv_tint(base_nm) as a colour ramp
+        self.assertEqual(ramp.bl_idname, "ShaderNodeValToRGB")
+        span = UV_TINT_NM[-1] - UV_TINT_NM[0]
+        self.assertEqual([round(e.position, 3) for e in ramp.color_ramp.elements],
+                         [round((nm - UV_TINT_NM[0]) / span, 3) for nm in UV_TINT_NM])
+        for e, rgb in zip(ramp.color_ramp.elements, UV_TINT_RGB):
+            self.assertEqual(tuple(round(c, 3) for c in e.color[:3]), rgb)
+        rng = self._src(ramp.inputs["Fac"])
+        self.assertEqual(self._src(rng.inputs["Value"]).attribute_name, "base_nm")
+        self.assertEqual((rng.inputs["From Min"].default_value, rng.inputs["From Max"].default_value),
+                         (UV_TINT_NM[0], UV_TINT_NM[-1]))
 
-    def test_strength_is_emit_times_capped_beaming(self):
+    def test_strength_is_emit_times_display_beaming_for_camera_rays_only(self):
         glow = [n for n in self.tree.nodes if n.bl_idname == "ShaderNodeEmission"][0]
         mul = self._src(glow.inputs["Strength"])
         self.assertEqual(mul.operation, "MULTIPLY")
         srcs = [self._src(mul.inputs[0]), self._src(mul.inputs[1])]
         emit = [n for n in srcs if n.bl_idname == "ShaderNodeAttribute"][0]
-        cap = [n for n in srcs if n.bl_idname == "ShaderNodeMath"][0]
         self.assertEqual(emit.attribute_name, "emit")
+        # 1 + (beam - 1) * is_camera_ray: bounce light (what lights the walls) is not beamed
+        lerp = [n for n in srcs if n.bl_idname == "ShaderNodeMath"][0]
+        self.assertEqual(lerp.operation, "MULTIPLY_ADD")
+        self.assertEqual(lerp.inputs[2].default_value, 1.0)
+        self.assertEqual(self._src(lerp.inputs[1]).bl_idname, "ShaderNodeLightPath")
+        self.assertEqual(lerp.inputs[1].links[0].from_socket.name, "Is Camera Ray")
+        sub = self._src(lerp.inputs[0])
+        self.assertEqual((sub.operation, sub.inputs[1].default_value), ("SUBTRACT", 1.0))
+        cap = self._src(sub.inputs[0])
         self.assertEqual(cap.operation, "MINIMUM")
-        power = [self._src(i) for i in cap.inputs[:2] if i.links][0]
+        self.assertEqual(cap.inputs[1].default_value, DISPLAY_BEAM_CAP)
+        power = self._src(cap.inputs[0])
         self.assertEqual(power.operation, "POWER")
         self.assertEqual(self._src(power.inputs[0]).attribute_name, "doppler")
-        self.assertEqual(power.inputs[1].default_value, 4.0)
-        self.assertGreater(cap.inputs[1].default_value, 1.0)
+        self.assertEqual(power.inputs[1].default_value, DISPLAY_BEAM_EXP)
 
 
 class ViewTransformTest(unittest.TestCase):

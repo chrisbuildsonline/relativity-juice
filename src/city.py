@@ -4,6 +4,8 @@ import math
 import bpy
 import numpy as np
 
+from src.relativity import DISPLAY_BEAM_CAP, DISPLAY_BEAM_EXP, UV_TINT_NM, UV_TINT_RGB
+
 CAM_Z = 25.0  # camera path: x=0, z=CAM_Z, y from 0 to length
 CORRIDOR_R = 12.0  # clearance radius around the camera path
 MAX_EDGE = 4.0  # subdivide so the per-vertex warp bends edges into curves
@@ -17,8 +19,6 @@ UV_EDGE_NM = 380.0  # same constants as relativity.shift_rgb
 IR_EDGE_NM = 780.0
 UV_RANGE_NM = 120.0
 IR_FADE_NM = 220.0
-UV_WHITE = (0.85, 0.8, 1.0, 1.0)
-BEAM_CAP = 40.0  # D^4 is capped here (forward D is ~45 at beta = 0.999)
 
 
 class _Mesh:
@@ -90,11 +90,11 @@ def _material():
         n.attribute_name = name
         return n
 
-    def math(op, a=None, b=None, clamp=False):
+    def math(op, a=None, b=None, c=None, clamp=False):
         n = nodes.new("ShaderNodeMath")
         n.operation = op
         n.use_clamp = clamp
-        for i, v in enumerate((a, b)):
+        for i, v in enumerate((a, b, c)):
             if isinstance(v, bpy.types.NodeSocket):
                 links.new(v, n.inputs[i])
             elif v is not None:
@@ -131,12 +131,24 @@ def _material():
                 n.inputs[i].default_value = v
         return n.outputs[2]
 
-    # UV: blend to violet-white over UV_RANGE_NM below the edge; IR: fade to black by IR_FADE_NM above
-    uv = mix(ramp(lam, UV_EDGE_NM, UV_EDGE_NM - UV_RANGE_NM), wave.outputs["Color"], UV_WHITE)
+    # UV: blend to relativity.uv_tint(base_nm) over UV_RANGE_NM below the edge; IR: fade to black by IR_FADE_NM above
+    tint = nodes.new("ShaderNodeValToRGB")
+    span = UV_TINT_NM[-1] - UV_TINT_NM[0]
+    tint.color_ramp.elements.new(0.5)
+    for e, nm, rgb in zip(tint.color_ramp.elements, UV_TINT_NM, UV_TINT_RGB):
+        e.position, e.color = (nm - UV_TINT_NM[0]) / span, (*rgb, 1.0)
+    rng = nodes.new("ShaderNodeMapRange")
+    for k, v in (("From Min", UV_TINT_NM[0]), ("From Max", UV_TINT_NM[-1])):
+        rng.inputs[k].default_value = v
+    links.new(base.outputs["Fac"], rng.inputs["Value"])
+    links.new(rng.outputs["Result"], tint.inputs["Fac"])
+    uv = mix(ramp(lam, UV_EDGE_NM, UV_EDGE_NM - UV_RANGE_NM), wave.outputs["Color"], tint.outputs["Color"])
     shifted = mix(ramp(lam, IR_EDGE_NM + IR_FADE_NM, IR_EDGE_NM, smooth=True), (0.0, 0.0, 0.0, 1.0), uv)
-    # beaming D^4, capped so it does not blow out near beta = 1
-    beaming = math("MINIMUM", math("POWER", dop.outputs["Fac"], 4.0), BEAM_CAP)
-    strength = math("MULTIPLY", emit.outputs["Fac"], beaming)
+    # beaming tone-mapped from D^4 to min(D^2, cap) (relativity.display_beaming); only camera rays see it,
+    # so bounce light off the walls stays at rest brightness instead of whiting them out
+    beam = math("MINIMUM", math("POWER", dop.outputs["Fac"], DISPLAY_BEAM_EXP), DISPLAY_BEAM_CAP)
+    cam_ray = nodes.new("ShaderNodeLightPath").outputs["Is Camera Ray"]
+    strength = math("MULTIPLY", emit.outputs["Fac"], math("MULTIPLY_ADD", math("SUBTRACT", beam, 1.0), cam_ray, 1.0))
     glow = nodes.new("ShaderNodeEmission")
     dark = nodes.new("ShaderNodeBsdfPrincipled")
     dark.inputs["Base Color"].default_value = (0.012, 0.014, 0.02, 1.0)
