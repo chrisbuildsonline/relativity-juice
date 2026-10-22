@@ -1,5 +1,9 @@
 node_modules/
 dist/
+out/
+*.blend1
+__pycache__/
 .env
 .env.*
 .DS_Store
+.omc/

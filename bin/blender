@@ -1,0 +1,9 @@
+#!/bin/sh
+# Resolve Blender: $BLENDER, then ~/opt/blender/blender, then PATH.
+if [ -n "$BLENDER" ]; then
+  exec "$BLENDER" "$@"
+elif [ -x "$HOME/opt/blender/blender" ]; then
+  exec "$HOME/opt/blender/blender" "$@"
+else
+  exec blender "$@"
+fi

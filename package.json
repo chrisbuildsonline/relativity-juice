@@ -1,0 +1,12 @@
+{
+  "name": "relativity-juice",
+  "private": true,
+  "scripts": {
+    "test": "sh bin/blender -b --factory-startup --python-exit-code 1 --python tests/run.py",
+    "typecheck": "pyright",
+    "smoke": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/smoke.py"
+  },
+  "devDependencies": {
+    "pyright": "^1.1.400"
+  }
+}
