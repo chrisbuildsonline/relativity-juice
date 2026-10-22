@@ -2,7 +2,15 @@ import unittest
 
 import numpy as np
 
-from src.relativity import aberrate, beaming, doppler, gamma
+from src.relativity import (
+    aberrate,
+    beaming,
+    beta_at,
+    doppler,
+    gamma,
+    shift_rgb,
+    wavelength_rgb,
+)
 
 Y = np.array([0.0, 1.0, 0.0])
 
@@ -126,6 +134,113 @@ class PropertyTest(unittest.TestCase):
         d = doppler(aberrate(self.dirs, 0.999) @ Y, 0.999)
         self.assertTrue(np.all(np.isfinite(d)) and np.all(d > 0))
         self.assertTrue(np.all(np.isfinite(beaming(d))))
+
+
+class WavelengthRgbTest(unittest.TestCase):
+    def test_blue_green_red_dominant(self):
+        b = wavelength_rgb(450.0)
+        g = wavelength_rgb(550.0)
+        r = wavelength_rgb(650.0)
+        self.assertEqual(int(np.argmax(b)), 2)
+        self.assertEqual(int(np.argmax(g)), 1)
+        self.assertEqual(int(np.argmax(r)), 0)
+
+    def test_shapes(self):
+        self.assertEqual(wavelength_rgb(550.0).shape, (3,))
+        self.assertEqual(wavelength_rgb(np.array([450.0, 550.0, 650.0])).shape, (3, 3))
+
+    def test_outside_visible_is_black(self):
+        np.testing.assert_array_equal(wavelength_rgb(np.array([300.0, 900.0])), 0.0)
+
+
+class ShiftRgbTest(unittest.TestCase):
+    def test_unshifted_matches_wavelength(self):
+        np.testing.assert_allclose(shift_rgb(550.0, 1.0), wavelength_rgb(550.0))
+
+    def test_extreme_blueshift_is_bright_violet_white(self):
+        c = shift_rgb(550.0, 5.0)
+        self.assertTrue(np.all(c >= 0.8))
+        self.assertGreaterEqual(c[2], c[0])
+        self.assertGreaterEqual(c[2], c[1])
+
+    def test_extreme_redshift_is_near_black(self):
+        self.assertTrue(np.all(shift_rgb(550.0, 0.4) < 0.02))
+
+    EPS = 1e-6
+    TOL = 1e-4  # observed max jump across an edge is ~1e-6
+
+    def test_continuous_at_uv_edge(self):
+        # lambda_obs = 380 -/+ EPS
+        lo = shift_rgb(380.0 - self.EPS, 1.0)
+        hi = shift_rgb(380.0 + self.EPS, 1.0)
+        np.testing.assert_allclose(lo, hi, atol=self.TOL)
+
+    def test_continuous_at_ir_edge(self):
+        lo = shift_rgb(780.0 - self.EPS, 1.0)
+        hi = shift_rgb(780.0 + self.EPS, 1.0)
+        np.testing.assert_allclose(lo, hi, atol=self.TOL)
+
+    def test_fades_to_zero_by_1000nm(self):
+        np.testing.assert_array_equal(shift_rgb(1000.0, 1.0), 0.0)
+        np.testing.assert_array_equal(shift_rgb(5000.0, 1.0), 0.0)
+
+    def test_rejects_non_positive_d(self):
+        with self.assertRaises(ValueError):
+            shift_rgb(550.0, 0.0)
+
+    def test_broadcasts(self):
+        out = shift_rgb(np.array([450.0, 550.0, 650.0])[:, None], np.array([0.5, 1.0]))
+        self.assertEqual(out.shape, (3, 2, 3))
+
+
+class ShiftRgbFuzzTest(unittest.TestCase):
+    def test_finite_bounded_shape(self):
+        rng = np.random.default_rng(777)
+        nm = rng.uniform(380.0, 780.0, size=10_000)
+        d = rng.uniform(0.05, 50.0, size=10_000)
+        out = shift_rgb(nm, d)
+        self.assertEqual(out.shape, (10_000, 3))
+        self.assertTrue(np.all(np.isfinite(out)))
+        self.assertTrue(np.all((out >= 0.0) & (out <= 1.0)))
+
+
+class BetaAtTest(unittest.TestCase):
+    def test_endpoints_exact(self):
+        self.assertAlmostEqual(beta_at(0.0), 0.1, delta=1e-12)
+        self.assertAlmostEqual(beta_at(15.0), 0.999, delta=1e-12)
+        self.assertAlmostEqual(beta_at(4.0, duration=4.0, start=0.2, end=0.9), 0.9, delta=1e-12)
+
+    def test_clamps(self):
+        self.assertEqual(beta_at(-5.0), beta_at(0.0))
+        self.assertEqual(beta_at(99.0), beta_at(15.0))
+
+    def test_mid_strictly_between(self):
+        self.assertTrue(0.1 < beta_at(7.5) < 0.999)
+
+    def test_starts_slow_flattens_at_end(self):
+        # eased in rapidity, so compare rapidity steps (beta itself saturates)
+        phi = lambda t: float(np.arctanh(beta_at(t)))  # noqa: E731
+        early = phi(1.0) - phi(0.0)
+        mid = phi(8.5) - phi(7.5)
+        late = phi(15.0) - phi(14.0)
+        self.assertLess(early, mid)
+        self.assertLess(late, mid)
+
+    def test_scalar_float_array_array(self):
+        self.assertIsInstance(beta_at(3.0), float)
+        self.assertEqual(np.shape(beta_at(np.array([0.0, 1.0, 2.0]))), (3,))
+
+    def test_rejects_bad_duration(self):
+        with self.assertRaises(ValueError):
+            beta_at(1.0, duration=0.0)
+
+    def test_monotonic_and_bounded_on_dense_grid(self):
+        t = np.linspace(-1.0, 16.0, 10_000)
+        b = np.asarray(beta_at(t))
+        self.assertTrue(np.all(np.diff(b) >= 0.0))
+        self.assertTrue(np.all((b > 0.0) & (b < 1.0)))
+        g = np.asarray(gamma(b))
+        self.assertTrue(np.all(np.isfinite(g)))
 
 
 if __name__ == "__main__":
