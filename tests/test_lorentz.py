@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from src import gamma
+from src.relativity import gamma
 
 
 class GammaTest(unittest.TestCase):
@@ -12,6 +12,9 @@ class GammaTest(unittest.TestCase):
     def test_known_value(self):
         self.assertAlmostEqual(gamma(0.6), 1.25)
 
+    def test_high_speed(self):
+        self.assertAlmostEqual(gamma(0.999), 22.366, places=3)
+
     def test_accepts_numpy_arrays(self):
         out = gamma(np.array([0.0, 0.6]))
         np.testing.assert_allclose(out, [1.0, 1.25])
@@ -19,6 +22,10 @@ class GammaTest(unittest.TestCase):
     def test_rejects_light_speed(self):
         with self.assertRaises(ValueError):
             gamma(1.0)
+
+    def test_rejects_negative_light_speed(self):
+        with self.assertRaises(ValueError):
+            gamma(-1.0)
 
 
 if __name__ == "__main__":
