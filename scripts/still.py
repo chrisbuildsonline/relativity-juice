@@ -14,6 +14,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from src.city import build_city, setup_view  # noqa: E402
 from src.flight import DURATION, camera_y  # noqa: E402
+from src.gauge import add_gauge, update_gauge  # noqa: E402
 from src.relativity import beta_at  # noqa: E402
 from src.warp import add_warp, set_beta  # noqa: E402
 
@@ -27,6 +28,8 @@ city = build_city()
 setup_view(scene)
 if betas:
     add_warp(city, scene.camera)
+add_gauge(scene, scene.camera)
+bpy.app.handlers.frame_change_pre.clear()  # a render re-fires frame change: keep the beta we set by hand
 
 scene.render.engine = "CYCLES"
 scene.cycles.device = "CPU"
@@ -58,6 +61,7 @@ for beta in betas:
     t = float(np.interp(beta, beta_at(grid), grid))
     scene.camera.location.y = camera_y(t)
     set_beta(city, beta)
+    update_gauge(beta)
     scene.render.filepath = os.path.join(OUT, "warp_%g.png" % beta)
     bpy.ops.render.render(write_still=True)
     print("still: %s beta=%g t=%.2f y=%.0f device=%s" % (scene.render.filepath, beta, t, scene.camera.location.y, scene.cycles.device))

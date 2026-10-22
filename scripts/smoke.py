@@ -10,6 +10,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from src.city import build_city, setup_view  # noqa: E402
 from src.flight import DURATION, camera_y  # noqa: E402
+from src.gauge import add_gauge  # noqa: E402
 from src.warp import add_warp  # noqa: E402
 
 OUT = os.path.join(ROOT, "out", "smoke")
@@ -27,6 +28,7 @@ city = build_city()
 print("smoke: city %d vertices built in %.2fs" % (len(city.data.vertices), time.perf_counter() - t0))
 setup_view(scene)
 add_warp(city, scene.camera)  # beta = 0: the warp is the identity, doppler = 1
+add_gauge(scene, scene.camera)
 t0 = time.perf_counter()
 n = len(city.evaluated_get(bpy.context.evaluated_depsgraph_get()).data.vertices)
 print("smoke: warp evaluated %d vertices in %.2fs; flight ends at y=%.0f" % (n, time.perf_counter() - t0, camera_y(DURATION)))

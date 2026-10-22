@@ -6,7 +6,8 @@
     "typecheck": "pyright",
     "smoke": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/smoke.py",
     "still": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py",
-    "still:warp": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py -- 0.1 0.9 0.999"
+    "still:warp": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py -- 0.1 0.9 0.999",
+    "still:gauge": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py -- 0.9"
   },
   "devDependencies": {
     "pyright": "^1.1.400"
