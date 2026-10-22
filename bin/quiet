@@ -1,0 +1,9 @@
+#!/bin/sh
+# Run a command and drop Blender's per-pass "Fra:" progress lines from its output; keeps the exit code.
+cd "$(dirname "$0")/.." || exit 1
+mkdir -p out
+log=$(mktemp)  # one per run (in /tmp), so scripts running at once do not clobber each other
+"$@" > "$log" 2>&1
+status=$?
+grep -v '^Fra:' "$log"
+exit $status

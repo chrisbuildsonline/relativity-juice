@@ -9,6 +9,9 @@ from src.gauge import add_gauge
 from src.warp import add_warp, animate_flight
 
 
+SHUTTER = 0.3  # fraction of a frame the shutter is open (0.5 = 180 degrees)
+
+
 def build_scene(**city_args):
     """The full animated scene: warped city, camera flight, gauge."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -18,6 +21,8 @@ def build_scene(**city_args):
     add_warp(city, scene.camera)
     animate_flight(scene, city, scene.camera)
     add_gauge(scene, scene.camera)
+    scene.render.use_motion_blur = True  # Cycles blurs the GN-deformed city and the camera move
+    scene.render.motion_blur_shutter = SHUTTER
     return scene
 
 

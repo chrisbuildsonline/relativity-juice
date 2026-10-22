@@ -2,16 +2,18 @@
   "name": "relativity-juice",
   "private": true,
   "scripts": {
-    "test": "sh bin/blender -b --factory-startup --python-exit-code 1 --python tests/run.py",
+    "test": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python tests/run.py",
+    "test:only": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python tests/run.py --",
     "typecheck": "pyright",
-    "smoke": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/smoke.py",
+    "smoke": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/smoke.py",
     "render": "sh bin/render",
     "render:status": "python3 -m src.status",
     "encode": "python3 -m src.encode",
-    "preview": "sh bin/preview",
-    "still": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py",
-    "still:warp": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py -- 0.1 0.9 0.999",
-    "still:gauge": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py -- 0.9"
+    "preview": "sh bin/quiet sh bin/preview",
+    "still": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py",
+    "still:warp": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py -- 0.1 0.9 0.999",
+    "still:beats": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/beats.py",
+    "still:gauge": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py -- 0.9"
   },
   "devDependencies": {
     "pyright": "^1.1.400"

@@ -1,6 +1,9 @@
 #!/bin/sh
-# CPU-only preview: every 15th frame at 480x270, 4 samples -> out/preview/ and out/preview.mp4.
+# CPU-only preview: every 15th frame at 480x270, 4 samples -> out/preview-<time>/ and out/preview.mp4.
+# A fresh dir every run: finished frames are skipped, so reusing one would show stale looks.
 cd "$(dirname "$0")/.." || exit 1
+dir="out/preview-$(date +%H%M%S)"
 sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/render.py -- \
-  --out out/preview --step 15 --width 480 --height 270 --samples 4 --device cpu || exit 1
-python3 -m src.encode out/preview out/preview.mp4 6
+  --out "$dir" --step 15 --width 480 --height 270 --samples 4 --device cpu || exit 1
+python3 -m src.encode "$dir" out/preview.mp4 6
+echo "preview frames in $dir"

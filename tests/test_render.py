@@ -51,6 +51,18 @@ class RenderTest(unittest.TestCase):
         self.assertGreater(a.max(), 0.0)  # the gauge is in the crop
         self.assertGreater(np.abs(a - b).mean(), 0.005)
 
+    def test_motion_blur_is_on_and_moves_the_warped_city(self):
+        scene = build_scene(length=1200.0)
+        self.assertTrue(scene.render.use_motion_blur)
+        self.assertLessEqual(scene.render.motion_blur_shutter, 0.5)  # a smear, not mush
+        out = {}
+        for on in (True, False):
+            scene.render.use_motion_blur = on
+            d = os.path.join(self.dir, str(on))
+            render_frames(scene, d, [300], 96, 54, 8, "cpu", False)
+            out[on] = read(os.path.join(d, "0300.png"))[..., :3]
+        self.assertGreater(np.abs(out[True] - out[False]).mean(), 0.003)
+
     def test_gauge_follows_frame_when_rendering(self):
         scene = build_scene(length=300.0)
         tiny(scene, self.dir, [FRAME_END])
