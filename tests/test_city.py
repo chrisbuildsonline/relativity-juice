@@ -94,13 +94,18 @@ class CityTest(unittest.TestCase):
         tree = mats[0].node_tree
         wl = [n for n in tree.nodes if n.bl_idname == "ShaderNodeWavelength"]
         self.assertEqual(len(wl), 1)
-        src = wl[0].inputs["Wavelength"].links[0].from_node
-        self.assertEqual(src.bl_idname, "ShaderNodeAttribute")
-        self.assertEqual(src.attribute_name, "base_nm")
-        dest = wl[0].outputs["Color"].links[0].to_node
+        # base_nm -> / doppler -> clamp -> Wavelength (details in test_warp)
+        clamp = wl[0].inputs["Wavelength"].links[0].from_node
+        div = clamp.inputs["Value"].links[0].from_node
+        self.assertEqual(div.inputs[0].links[0].from_node.attribute_name, "base_nm")
+        # Wavelength -> UV mix -> IR mix -> Emission; strength = emit * capped beaming
+        uv = wl[0].outputs["Color"].links[0].to_node
+        dest = uv.outputs[2].links[0].to_node.outputs[2].links[0].to_node
         self.assertEqual(dest.bl_idname, "ShaderNodeEmission")
         strength = dest.inputs["Strength"].links[0].from_node
-        self.assertEqual(strength.attribute_name, "emit")
+        self.assertEqual(strength.bl_idname, "ShaderNodeMath")
+        names = {i.links[0].from_node.bl_idname for i in strength.inputs[:2]}
+        self.assertIn("ShaderNodeAttribute", names)
 
     def test_procedural_only(self):
         self.assertEqual(len(bpy.data.images), 0)

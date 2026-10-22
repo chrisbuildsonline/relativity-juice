@@ -13,6 +13,12 @@ GROUND_X = 72.0
 PALETTE_NM = (440.0, 470.0, 500.0, 530.0, 590.0, 620.0, 660.0)
 WINDOW_EMIT = 5.0
 NEON_EMIT = 14.0
+UV_EDGE_NM = 380.0  # same constants as relativity.shift_rgb
+IR_EDGE_NM = 780.0
+UV_RANGE_NM = 120.0
+IR_FADE_NM = 220.0
+UV_WHITE = (0.85, 0.8, 1.0, 1.0)
+BEAM_CAP = 40.0  # D^4 is capped here (forward D is ~45 at beta = 0.999)
 
 
 class _Mesh:
@@ -78,20 +84,67 @@ def _material():
     mat.use_nodes = True
     nodes, links = mat.node_tree.nodes, mat.node_tree.links
     nodes.clear()
-    base = nodes.new("ShaderNodeAttribute")
-    base.attribute_name = "base_nm"
-    emit = nodes.new("ShaderNodeAttribute")
-    emit.attribute_name = "emit"
+
+    def attr(name):
+        n = nodes.new("ShaderNodeAttribute")
+        n.attribute_name = name
+        return n
+
+    def math(op, a=None, b=None, clamp=False):
+        n = nodes.new("ShaderNodeMath")
+        n.operation = op
+        n.use_clamp = clamp
+        for i, v in enumerate((a, b)):
+            if isinstance(v, bpy.types.NodeSocket):
+                links.new(v, n.inputs[i])
+            elif v is not None:
+                n.inputs[i].default_value = v
+        return n.outputs[0]
+
+    base, emit, dop = attr("base_nm"), attr("emit"), attr("doppler")
+    # observed wavelength = base / D, clamped to what the Wavelength node can draw
+    lam = math("DIVIDE", base.outputs["Fac"], dop.outputs["Fac"])
+    clamp = nodes.new("ShaderNodeClamp")
+    clamp.inputs["Min"].default_value = UV_EDGE_NM
+    clamp.inputs["Max"].default_value = IR_EDGE_NM
+    links.new(lam, clamp.inputs["Value"])
     wave = nodes.new("ShaderNodeWavelength")
+    links.new(clamp.outputs["Result"], wave.inputs["Wavelength"])
+
+    def ramp(src, lo, hi, smooth=False):
+        r = nodes.new("ShaderNodeMapRange")
+        r.interpolation_type = "SMOOTHSTEP" if smooth else "LINEAR"
+        r.clamp = True
+        for k, v in (("From Min", lo), ("From Max", hi), ("To Min", 0.0), ("To Max", 1.0)):
+            r.inputs[k].default_value = v
+        links.new(src, r.inputs["Value"])
+        return r.outputs["Result"]
+
+    def mix(fac, a, b):
+        n = nodes.new("ShaderNodeMix")
+        n.data_type = "RGBA"
+        links.new(fac, n.inputs[0])
+        for i, v in ((6, a), (7, b)):  # RGBA A / B (the name "A" would hit the float socket)
+            if isinstance(v, bpy.types.NodeSocket):
+                links.new(v, n.inputs[i])
+            else:
+                n.inputs[i].default_value = v
+        return n.outputs[2]
+
+    # UV: blend to violet-white over UV_RANGE_NM below the edge; IR: fade to black by IR_FADE_NM above
+    uv = mix(ramp(lam, UV_EDGE_NM, UV_EDGE_NM - UV_RANGE_NM), wave.outputs["Color"], UV_WHITE)
+    shifted = mix(ramp(lam, IR_EDGE_NM + IR_FADE_NM, IR_EDGE_NM, smooth=True), (0.0, 0.0, 0.0, 1.0), uv)
+    # beaming D^4, capped so it does not blow out near beta = 1
+    beaming = math("MINIMUM", math("POWER", dop.outputs["Fac"], 4.0), BEAM_CAP)
+    strength = math("MULTIPLY", emit.outputs["Fac"], beaming)
     glow = nodes.new("ShaderNodeEmission")
     dark = nodes.new("ShaderNodeBsdfPrincipled")
     dark.inputs["Base Color"].default_value = (0.012, 0.014, 0.02, 1.0)
     dark.inputs["Roughness"].default_value = 0.35
     add = nodes.new("ShaderNodeAddShader")
     out = nodes.new("ShaderNodeOutputMaterial")
-    links.new(base.outputs["Fac"], wave.inputs["Wavelength"])
-    links.new(wave.outputs["Color"], glow.inputs["Color"])
-    links.new(emit.outputs["Fac"], glow.inputs["Strength"])
+    links.new(shifted, glow.inputs["Color"])
+    links.new(strength, glow.inputs["Strength"])
     links.new(dark.outputs["BSDF"], add.inputs[0])
     links.new(glow.outputs["Emission"], add.inputs[1])
     links.new(add.outputs["Shader"], out.inputs["Surface"])
@@ -116,7 +169,8 @@ def build_city(seed=7, length=2000.0):
     pts = np.concatenate(m.pts)
     mesh = bpy.data.meshes.new("City")
     mesh.from_pydata(pts.tolist(), [], np.concatenate(m.quads).tolist())
-    for name, values in (("base_nm", m.nm), ("emit", m.emit)):
+    # doppler = 1 (rest) until the warp modifier overwrites it
+    for name, values in (("base_nm", m.nm), ("emit", m.emit), ("doppler", [np.ones(len(pts))])):
         mesh.attributes.new(name, "FLOAT", "POINT").data.foreach_set("value", np.concatenate(values))
     mesh.materials.append(_material())
     obj = bpy.data.objects.new("City", mesh)
@@ -124,11 +178,12 @@ def build_city(seed=7, length=2000.0):
     return obj
 
 
-def setup_view(scene):
-    """Camera at the path start looking down +Y, plus a near-black world."""
+def setup_view(scene, y=0.0):
+    """Camera at (0, y, CAM_Z) looking down +Y, plus a near-black world and AgX."""
+    scene.view_settings.view_transform = "AgX"
     cam = bpy.data.objects.new("Camera", bpy.data.cameras.new("Camera"))
     cam.data.clip_end = 5000.0
-    cam.location = (0.0, 0.0, CAM_Z)
+    cam.location = (0.0, y, CAM_Z)
     cam.rotation_euler = (math.pi / 2, 0.0, 0.0)
     scene.collection.objects.link(cam)
     scene.camera = cam
