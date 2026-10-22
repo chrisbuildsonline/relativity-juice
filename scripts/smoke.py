@@ -1,41 +1,29 @@
-"""Headless Cycles CPU smoke render: one 64x36 frame, then check it is not flat."""
+"""Headless Cycles CPU smoke render: the city at beta=0 in 64x36, fails if near-black or flat."""
 import os
 import sys
+import time
 
 import bpy
+import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+from src.city import build_city, setup_view  # noqa: E402
+
 OUT = os.path.join(ROOT, "out", "smoke")
 PNG = os.path.join(OUT, "smoke.png")
+MIN_MEAN = 0.02
+MIN_STD = 0.02
 os.makedirs(OUT, exist_ok=True)
 if os.path.exists(PNG):
     os.remove(PNG)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
-
-# Emissive cube.
-bpy.ops.mesh.primitive_cube_add(size=2)
-cube = bpy.context.active_object
-mat = bpy.data.materials.new("glow")
-mat.use_nodes = True
-nodes = mat.node_tree.nodes
-nodes.clear()
-emit = nodes.new("ShaderNodeEmission")
-emit.inputs["Color"].default_value = (1.0, 0.2, 0.6, 1.0)
-emit.inputs["Strength"].default_value = 4.0
-out = nodes.new("ShaderNodeOutputMaterial")
-mat.node_tree.links.new(emit.outputs["Emission"], out.inputs["Surface"])
-cube.data.materials.append(mat)
-
-# Camera.
-bpy.ops.object.camera_add(location=(4, -4, 3), rotation=(1.1, 0, 0.785))
-scene.camera = bpy.context.active_object
-
-# Dark world so the cube stands out.
-world = bpy.data.worlds.new("w")
-world.color = (0.02, 0.02, 0.05)
-scene.world = world
+t0 = time.perf_counter()
+city = build_city()
+print("smoke: city %d vertices built in %.2fs" % (len(city.data.vertices), time.perf_counter() - t0))
+setup_view(scene)
 
 scene.render.engine = "CYCLES"
 scene.cycles.device = "CPU"
@@ -56,8 +44,11 @@ img = bpy.data.images.load(PNG)
 w, h = img.size
 if (w, h) != (64, 36):
     sys.exit("smoke: unexpected size %dx%d" % (w, h))
-px = list(img.pixels)
-colours = {tuple(round(v, 3) for v in px[i:i + 4]) for i in range(0, len(px), 4)}
-if len(colours) < 2:
-    sys.exit("smoke: render is a single flat colour: %s" % (colours,))
-print("smoke ok: %dx%d, %d distinct colours -> %s" % (w, h, len(colours), PNG))
+px = np.array(img.pixels[:], dtype=float).reshape(-1, 4)
+lum = px[:, :3] @ np.array([0.2126, 0.7152, 0.0722])
+mean, std = float(lum.mean()), float(lum.std())
+if mean < MIN_MEAN:
+    sys.exit("smoke: render is near-black (mean luminance %.4f < %.2f)" % (mean, MIN_MEAN))
+if std < MIN_STD:
+    sys.exit("smoke: render is flat (luminance std %.4f < %.2f)" % (std, MIN_STD))
+print("smoke ok: %dx%d, mean luminance %.3f, std %.3f -> %s" % (w, h, mean, std, PNG))

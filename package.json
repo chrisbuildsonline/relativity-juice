@@ -4,7 +4,8 @@
   "scripts": {
     "test": "sh bin/blender -b --factory-startup --python-exit-code 1 --python tests/run.py",
     "typecheck": "pyright",
-    "smoke": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/smoke.py"
+    "smoke": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/smoke.py",
+    "still": "sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py"
   },
   "devDependencies": {
     "pyright": "^1.1.400"
