@@ -18,12 +18,18 @@ class EntryFilesTest(unittest.TestCase):
                                 "-of", "json", mp4], check=True, capture_output=True, text=True)
         info = json.loads(probe.stdout)
         video = [s for s in info["streams"] if s["codec_type"] == "video"]
-        self.assertEqual([s["codec_type"] for s in info["streams"]], ["video"])  # README says no audio
+        self.assertEqual([s["codec_type"] for s in info["streams"]], ["video", "audio"])
         self.assertEqual((video[0]["codec_name"], video[0]["width"], video[0]["height"], video[0]["r_frame_rate"]),
                          ("h264", 1920, 1080, "24/1"))
+        self.assertEqual(info["streams"][1]["codec_name"], "aac")
         duration = float(info["format"]["duration"])
         self.assertTrue(5 <= duration <= 30)
-        self.assertAlmostEqual(duration, 15.0, delta=0.1)
+        self.assertAlmostEqual(duration, 2.0 + 15.0 + 2.5, delta=0.1)  # title + flight + end card
+
+    def test_preview_gif_is_small(self):
+        gif = os.path.join(MEDIA, "preview.gif")
+        self.assertTrue(os.path.isfile(gif))
+        self.assertLess(os.path.getsize(gif), 8 * 1024 * 1024)
 
     def test_wip_screenshot_is_a_real_picture(self):
         wip = os.path.join(MEDIA, "wip.png")
