@@ -1,4 +1,4 @@
-"""Render progress (no bpy): python3 -m src.status. Frames done, process alive, last log line, ETA."""
+"""Render progress (no bpy): python3 -m src.status [--frames DIR] [--wait [--max-min N]]. Frames done, process alive, last log line, ETA."""
 import os
 import re
 import sys
@@ -45,7 +45,8 @@ def wait(frames_dir, log, pid_file, total=360, max_min=None, poll=30, sleep=time
 
 if __name__ == "__main__":
     o = os.path.join(ROOT, "out")
-    args = (os.path.join(o, "frames"), os.path.join(o, "render.log"), os.path.join(o, "render.pid"))
+    frames = sys.argv[sys.argv.index("--frames") + 1] if "--frames" in sys.argv else os.path.join(o, "frames")
+    args = (os.path.join(ROOT, frames), os.path.join(o, "render.log"), os.path.join(o, "render.pid"))
     if "--wait" in sys.argv:
         i = sys.argv.index("--max-min") if "--max-min" in sys.argv else 0
         code, text = wait(*args, max_min=float(sys.argv[i + 1]) if i else None)
