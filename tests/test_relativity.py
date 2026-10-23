@@ -4,12 +4,14 @@ import numpy as np
 
 from src.relativity import (
     DISPLAY_BEAM_CAP,
+    DISPLAY_DESAT_MAX,
     UV_TINT_RGB,
     aberrate,
     beaming,
     beta_at,
     doppler,
     display_beaming,
+    display_desaturation,
     gamma,
     shift_rgb,
     uv_tint,
@@ -170,6 +172,17 @@ class DisplayBeamingTest(unittest.TestCase):
     def test_compresses_d4(self):
         self.assertLess(display_beaming(4.4), beaming(4.4))
         self.assertLess(display_beaming(0.5), 1.0)  # still dims the receding side
+
+
+class DisplayDesaturationTest(unittest.TestCase):
+    def test_off_while_slow_full_when_late_monotone(self):
+        self.assertEqual(display_desaturation(gamma(0.1)), 0.0)
+        self.assertEqual(display_desaturation(gamma(0.9)), 0.0)  # gamma 2.3
+        self.assertAlmostEqual(display_desaturation(gamma(0.999)), DISPLAY_DESAT_MAX)  # gamma 22
+        g = np.linspace(1.0, 30.0, 500)
+        d = np.asarray(display_desaturation(g))
+        self.assertTrue(np.all(np.diff(d) >= 0.0))
+        self.assertLess(DISPLAY_DESAT_MAX, 1.0)  # never greys out the colour completely
 
 
 class ShiftRgbTest(unittest.TestCase):

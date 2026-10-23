@@ -68,6 +68,22 @@ def display_beaming(D):
     return _scalar_or_array(np.minimum(np.asarray(D, dtype=float) ** DISPLAY_BEAM_EXP, DISPLAY_BEAM_CAP))
 
 
+DISPLAY_DESAT_MAX = 0.35
+DISPLAY_DESAT_GAMMA = (5.0, 12.0)
+
+
+def display_desaturation(g):
+    """Share of grey mixed into the visible-band Doppler colour at Lorentz factor g (display tone-map).
+
+    Once gamma is large the whole spectrum is squeezed into a thin ring near the frame edge, and a sharp
+    ring of pure green, yellow and red reads as an artefact, not light. Fades in from gamma 5 to 12 up to
+    DISPLAY_DESAT_MAX; hue order and wavelength are untouched, only the saturation of 380-780 nm colours.
+    """
+    lo, hi = DISPLAY_DESAT_GAMMA
+    t = np.clip((np.asarray(g, dtype=float) - lo) / (hi - lo), 0.0, 1.0)
+    return _scalar_or_array(DISPLAY_DESAT_MAX * t * t * (3.0 - 2.0 * t))
+
+
 UV_EDGE_NM = 380.0
 IR_EDGE_NM = 780.0
 # where deep UV ends up: saturated violet-blue (not white), nudged by the source's rest colour
