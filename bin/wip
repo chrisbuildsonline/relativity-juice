@@ -1,0 +1,13 @@
+#!/bin/sh
+# Blender with its GUI -> media/wip.png via scripts/wip.py. Uses the real display (e.g. WSLg) when there
+# is one, else a virtual X server (xvfb-run) with software OpenGL; the screenshot is Blender's own window.
+cd "$(dirname "$0")/.." || exit 1
+mkdir -p media
+run="sh bin/blender --factory-startup --python-exit-code 1 --python scripts/wip.py"
+if [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
+  $run
+else
+  xvfb-run -a -s "-screen 0 1920x1080x24" $run
+fi
+test -s media/wip.png || { echo "wip: no screenshot written" >&2; exit 1; }
+echo "wip: media/wip.png"
