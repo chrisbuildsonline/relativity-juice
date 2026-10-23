@@ -9,6 +9,7 @@ from src.relativity import DISPLAY_BEAM_CAP, DISPLAY_BEAM_EXP, UV_TINT_NM, UV_TI
 CAM_Z = 25.0  # camera path: x=0, z=CAM_Z, y from 0 to length
 CORRIDOR_R = 12.0  # clearance radius around the camera path
 MAX_EDGE = 4.0  # subdivide so the per-vertex warp bends edges into curves
+MAX_LIT_EDGE = 2.0  # lit faces: finer, so the Doppler colour does not sweep the spectrum inside one face
 OVERHANG = 300.0  # city extends this far behind y=0 and ahead of y=length
 STREET_X = 16.0  # inner face of the first building row
 GROUND_X = 72.0
@@ -31,8 +32,9 @@ class _Mesh:
     def grid(self, p0, u, v, nm=550.0, emit=0.0):
         """Quad grid on p0 + s*u + t*v, every edge <= MAX_EDGE, shared vertices."""
         p0, u, v = (np.asarray(a, dtype=float) for a in (p0, u, v))
-        nu = max(1, math.ceil(np.linalg.norm(u) / MAX_EDGE))
-        nv = max(1, math.ceil(np.linalg.norm(v) / MAX_EDGE))
+        edge = MAX_LIT_EDGE if emit else MAX_EDGE
+        nu = max(1, math.ceil(np.linalg.norm(u) / edge))
+        nv = max(1, math.ceil(np.linalg.norm(v) / edge))
         s = np.arange(nu + 1) / nu
         t = np.arange(nv + 1) / nv
         pts = p0 + s[:, None, None] * u + t[None, :, None] * v
@@ -142,7 +144,12 @@ def _material():
         rng.inputs[k].default_value = v
     links.new(base.outputs["Fac"], rng.inputs["Value"])
     links.new(rng.outputs["Result"], tint.inputs["Fac"])
-    uv = mix(ramp(lam, UV_EDGE_NM, UV_EDGE_NM - UV_RANGE_NM), wave.outputs["Color"], tint.outputs["Color"])
+    # display tone-map (relativity.display_desaturation): late in the flight the spectrum is squeezed into a thin
+    # ring at the frame edge; pull visible-band colour towards its own grey so it does not read as a rainbow glitch
+    bw = nodes.new("ShaderNodeRGBToBW")
+    links.new(wave.outputs["Color"], bw.inputs["Color"])
+    visible = mix(attr("desat").outputs["Fac"], wave.outputs["Color"], bw.outputs["Val"])
+    uv = mix(ramp(lam, UV_EDGE_NM, UV_EDGE_NM - UV_RANGE_NM), visible, tint.outputs["Color"])
     shifted = mix(ramp(lam, IR_EDGE_NM + IR_FADE_NM, IR_EDGE_NM, smooth=True), (0.0, 0.0, 0.0, 1.0), uv)
     # beaming tone-mapped from D^4 to min(D^2, cap) (relativity.display_beaming); only camera rays see it,
     # so bounce light off the walls stays at rest brightness instead of whiting them out
@@ -181,8 +188,8 @@ def build_city(seed=7, length=2000.0):
     pts = np.concatenate(m.pts)
     mesh = bpy.data.meshes.new("City")
     mesh.from_pydata(pts.tolist(), [], np.concatenate(m.quads).tolist())
-    # doppler = 1 (rest) until the warp modifier overwrites it
-    for name, values in (("base_nm", m.nm), ("emit", m.emit), ("doppler", [np.ones(len(pts))])):
+    # doppler = 1 (rest), desat = 0 until the warp modifier overwrites them
+    for name, values in (("base_nm", m.nm), ("emit", m.emit), ("doppler", [np.ones(len(pts))]), ("desat", [np.zeros(len(pts))])):
         mesh.attributes.new(name, "FLOAT", "POINT").data.foreach_set("value", np.concatenate(values))
     mesh.materials.append(_material())
     obj = bpy.data.objects.new("City", mesh)

@@ -6,7 +6,7 @@ from mathutils import Vector
 
 from src.city import build_city, setup_view
 from src.flight import FRAME_END, FRAME_START, time_of
-from src.gauge import BAR_W, add_gauge, gauge_text
+from src.gauge import BAR_W, GLOW, add_gauge, gauge_text
 from src.relativity import beta_at, gamma
 from src.warp import add_warp, animate_flight
 
@@ -100,11 +100,19 @@ class GaugeTest(unittest.TestCase):
                 self.assertLess(x1, 0.5)
                 self.assertLessEqual(y1 - y0, 0.2)
 
-    def test_panel_is_an_opaque_black_plate(self):
+    def test_panel_is_a_translucent_backing_not_a_black_plate(self):
         tree = bpy.data.objects["GaugePanel"].data.materials[0].node_tree
-        self.assertEqual({n.bl_idname for n in tree.nodes}, {"ShaderNodeEmission", "ShaderNodeOutputMaterial"})
-        glow = [n for n in tree.nodes if n.bl_idname == "ShaderNodeEmission"][0]
-        self.assertEqual(glow.inputs["Strength"].default_value, 0.0)
+        self.assertIn("ShaderNodeBsdfTransparent", {n.bl_idname for n in tree.nodes})
+        mix = [n for n in tree.nodes if n.bl_idname == "ShaderNodeMixShader"][0]
+        self.assertLess(mix.inputs["Fac"].default_value, 0.98)  # some of the frame always shows through
+        self.assertGreater(mix.inputs["Fac"].default_value, 0.0)
+
+    def test_frame_is_one_gauge_colour(self):
+        glow = [n for n in bpy.data.objects["GaugeFrame"].data.materials[0].node_tree.nodes
+                if n.bl_idname == "ShaderNodeEmission"][0]
+        self.assertGreater(glow.inputs["Strength"].default_value, 0.0)
+        for got, want in zip(glow.inputs["Color"].default_value, GLOW):
+            self.assertAlmostEqual(got, want, places=5)
 
     def test_bundled_font(self):
         font = self.text.data.font

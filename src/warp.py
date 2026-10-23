@@ -9,7 +9,7 @@ which is relativity.aberrate / relativity.doppler. Near the backward axis
 import bpy
 
 from src.flight import FPS, FRAME_END, FRAME_START, camera_y, time_of
-from src.relativity import beta_at
+from src.relativity import DISPLAY_DESAT_GAMMA, DISPLAY_DESAT_MAX, beta_at
 
 NAME = "Warp"
 
@@ -89,8 +89,20 @@ def _build_tree(camera):
     store.inputs["Name"].default_value = "doppler"
     value = [i for i in store.inputs if i.name == "Value" and i.type == "VALUE"][0]
     links.new(math("MULTIPLY", gam, denom), value)
+    # display tone-map share (relativity.display_desaturation), read by the city shader
+    ramp = nodes.new("ShaderNodeMapRange")
+    ramp.interpolation_type, ramp.clamp = "SMOOTHSTEP", True
+    for key, val in (("From Min", DISPLAY_DESAT_GAMMA[0]), ("From Max", DISPLAY_DESAT_GAMMA[1]),
+                     ("To Min", 0.0), ("To Max", DISPLAY_DESAT_MAX)):
+        ramp.inputs[key].default_value = val
+    links.new(gam, ramp.inputs["Value"])
+    store2 = nodes.new("GeometryNodeStoreNamedAttribute")
+    store2.data_type, store2.domain = "FLOAT", "POINT"
+    links.new(store.outputs["Geometry"], store2.inputs["Geometry"])
+    store2.inputs["Name"].default_value = "desat"
+    links.new(ramp.outputs["Result"], [i for i in store2.inputs if i.name == "Value" and i.type == "VALUE"][0])
     setp = nodes.new("GeometryNodeSetPosition")
-    links.new(store.outputs["Geometry"], setp.inputs["Geometry"])
+    links.new(store2.outputs["Geometry"], setp.inputs["Geometry"])
     links.new(new_pos, setp.inputs["Position"])
     links.new(setp.outputs["Geometry"], gout.inputs["Geometry"])
     return tree
