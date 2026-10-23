@@ -60,6 +60,18 @@ class ReadmeTest(unittest.TestCase):
         for needle in ("no third-party", "Blender's bundled font", "AI coding assistant", "No AI-generated"):
             self.assertIn(needle, body)
 
+    def test_gif_on_top_and_the_cut_is_described(self):
+        self.assertIn("media/preview.gif", text()[:600])
+        self.assertIn("bun run cards", section(r"how to run") or "")
+        body = section(r"physics") or ""
+        for needle in ("359/24", "14.96", "22.4"):
+            self.assertIn(needle, body)
+        disclosure = section(r"disclosure") or ""
+        self.assertIn("synthesized", disclosure)
+        self.assertNotIn("no audio", text().lower())
+        for needle in ("aberration, Doppler shift and beaming", "24 fps"):
+            self.assertIn(needle, text())
+
     def test_every_relative_link_and_image_exists(self):
         links = re.findall(r"!?\[[^\]]*\]\(([^)\s]+)\)", text())
         self.assertGreater(len(links), 5)

@@ -1,8 +1,12 @@
 # relativity-juice
 
-A 15-second procedural Blender animation: a cyberpunk megacity seen from a camera that accelerates from 0.1c to 0.999c, with the real special-relativity effects applied to what the camera sees. Entry for the [RenderJuice Blender Animation & Programmatic Rendering Contest](https://programmatic-rendering-contest.devpost.com/), theme "Speed".
+[![relativity-juice preview](media/preview.gif)](media/relativity-juice.mp4)
+
+A 15-second procedural Blender animation: a cyberpunk megacity seen from a camera that accelerates from 0.1c to 0.999c, with the real special-relativity effects applied to what the camera sees. The effects shown are aberration, Doppler shift and beaming; Lorentz contraction appears through aberration, not as a separate step. The clip is 24 fps. Entry for the [RenderJuice Blender Animation & Programmatic Rendering Contest](https://programmatic-rendering-contest.devpost.com/), theme "Speed".
 
 [Watch the video (media/relativity-juice.mp4)](media/relativity-juice.mp4)
+
+What's in the video: a 2 s title card, the 15 s flight (360 frames), and a 2.5 s end card, joined with short fades through black (19.5 s in all). The sound bed is synthesized from γ(t): a drone that climbs in pitch with log γ and a noise rush that opens up with β.
 
 | cruise, frame 48 | build, frame 150 |
 | --- | --- |
@@ -33,6 +37,7 @@ All of it is in `src/relativity.py` (NumPy, no Blender) and mirrored in the Geom
 Setup: the camera moves along +Y at speed β = v/c. Everything else is at rest in the "city frame". θ is the angle between the direction to a point and +Y, measured in the city frame.
 
 - Lorentz factor: γ = 1 / √(1 − β²). At 0.999c, γ ≈ 22.4.
+- Where the clip ends: the last frame (360) is at t = 359/24 ≈ 14.96 s. The speed curve is flat there, so β is within 1e-6 of 0.999c and γ ≈ 22.4 (the gauge shows 0.999c); the curve lands exactly on β = 0.999c at t = 15 s, one frame later.
 - Slow light: the scene speed of light is C = 120 units per second (`src/flight.py`), far slower than real life, so the 15 s flight covers about 1400 units.
 - Speed curve (`beta_at`): the rapidity φ = atanh(β) is interpolated from atanh(0.1) to atanh(0.999) with a smoothstep over 15 s, then β = tanh(φ). Slow start, steady build, flat finish, and γ grows through the whole clip. The camera path is the integral of β·C over time (`camera_y`).
 - Aberration: the apparent direction of a point is cos θ' = (cos θ + β) / (1 + β cos θ), and the part of the direction perpendicular to Y is scaled by 1 / (γ(1 + β cos θ)). Directions along ±Y do not move. As β rises, everything crowds toward the forward point.
@@ -55,7 +60,8 @@ bun run render         # the full render, detached: frames to out/frames, log ou
 bun run render:status  # frames done, whether the render is alive, last log line, eta
 bun run render:wait    # block until 360/360 frames or the render process ends (--max-min N to give up)
 bun run encode         # out/frames to out/relativity-juice.mp4 (H.264, 1920x1080, 24 fps)
-bun run media          # out/frames to media/relativity-juice.mp4, media/contact.png, and copies the beat stills
+bun run cards          # title and end cards to out/cards/title.png and end.png (Cycles CPU, Blender's bundled font)
+bun run media          # runs cards, then cuts title + out/frames + end card with the sound bed to media/relativity-juice.mp4, plus media/preview.gif, media/contact.png and the beat stills
 bun run wip            # Blender GUI screenshot of the scene to media/wip.png
 ```
 
@@ -78,15 +84,16 @@ What the script controls:
 - The gauge (`src/gauge.py`): a text object, a bar and a black plate parented to the camera. A `frame_change_pre` handler writes the current β and γ into the text and scales the bar every frame.
 - The camera: a path along +Y at a fixed height, set from the flight code. Motion blur is on with shutter 0.3.
 - Render settings: Cycles, 1920x1080, 48 samples, denoising, AgX view transform, near-black world, 24 fps, frames 1 to 360.
+- The cut and sound (`scripts/cards.py`, `src/media.py`, `src/sound.py`): the cards are emissive text rendered by Blender, with the end card's β and γ computed from the flight. The sound is a drone and filtered noise written as a WAV with the standard library, pitch and loudness driven by a copy of `beta_at`, then muxed as AAC.
 
 ## How it was rendered
 
-Locally, on one RTX 3090 with Cycles on CUDA. 1920x1080, 24 fps, 360 frames (15 s), 48 samples, denoised, motion blur with a 0.3 shutter. About 25 to 33 seconds per frame, 3 hours for the whole clip. It was not rendered on the RenderJuice cloud. The frames were encoded to H.264 with ffmpeg (`bun run media`).
+Locally, on one RTX 3090 with Cycles on CUDA. 1920x1080, 24 fps, 360 frames (15 s), 48 samples, denoised, motion blur with a 0.3 shutter. About 25 to 33 seconds per frame, 3 hours for the whole clip. It was not rendered on the RenderJuice cloud. The frames were then cut with the two cards and a synthesized sound bed (`src/sound.py`, plain Python) and encoded to H.264 + AAC with ffmpeg (`bun run media`). The cut adds 4.5 s around the 15 s render and needed no re-render.
 
 ## Assets and AI disclosure
 
-- There are no third-party assets: no models, textures, HDRIs, music or sound. The video has no audio.
-- The only font is Blender's bundled font, the default for text objects, used for the gauge.
+- There are no third-party assets: no models, textures, HDRIs, music or samples. The sound bed is synthesized by our own script from γ(t), with no third-party audio or samples.
+- The only font is Blender's bundled font, the default for text objects, used for the gauge and the title and end cards.
 - No AI-generated images or video. Every pixel comes from the procedural script rendered by Cycles.
 - The code, tests and this README were written with the help of an AI coding assistant (Claude). The physics follows standard special relativity.
 - Tools: Blender 4.5 LTS (Cycles, Geometry Nodes), Python with NumPy (Blender's own), ffmpeg, Bun and pyright for the dev scripts.
