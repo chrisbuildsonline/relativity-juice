@@ -1,3 +1,4 @@
+import filecmp
 import json
 import os
 import shutil
@@ -6,13 +7,26 @@ import tempfile
 import unittest
 
 from src.encode import tool
-from src.media import make_media
+from src.media import REAR_END, REAR_START, composite, make_media
 
 
 def lavfi_frames(out, n):
     os.makedirs(out, exist_ok=True)
     subprocess.run([tool("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", "testsrc=size=64x36:rate=24",
-                    "-frames:v", str(n), os.path.join(out, "%04d.png")], check=True)
+                    "-frames:v", str(n), "-pix_fmt", "rgba", os.path.join(out, "%04d.png")], check=True)  # Blender's frames are RGBA
+
+
+def rear_frames(out, first=REAR_START, last=REAR_END):
+    os.makedirs(out, exist_ok=True)
+    subprocess.run([tool("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", "color=c=0xc02010:size=64x36:rate=24",
+                    "-frames:v", str(last - first + 1), "-start_number", str(first), os.path.join(out, "%04d.png")], check=True)
+
+
+def top_right(path):
+    """Raw RGB bytes of the top-right quarter of a PNG, where the inset goes."""
+    r = subprocess.run([tool("ffmpeg"), "-v", "error", "-i", path, "-vf", "crop=iw/2:ih/2:iw/2:0,format=rgb24",
+                        "-f", "rawvideo", "-"], check=True, capture_output=True)
+    return r.stdout
 
 
 def probe(path, entries, stream="v:0"):
@@ -36,6 +50,7 @@ class MediaTest(unittest.TestCase):
         self.stills = os.path.join(self.dir, "stills")
         self.cards = os.path.join(self.dir, "cards")
         self.media = os.path.join(self.dir, "media")
+        self.rear = os.path.join(self.dir, "rear")
         os.makedirs(self.stills)
         os.makedirs(self.cards)
         for name in ("beat_cruise.png", "beat_build.png", "city.png"):
@@ -46,29 +61,60 @@ class MediaTest(unittest.TestCase):
 
     def test_refuses_unless_all_360_frames_exist(self):
         lavfi_frames(self.frames, 359)
+        rear_frames(self.rear)
         with self.assertRaises(SystemExit):
-            make_media(self.frames, self.stills, self.media, self.cards)
+            make_media(self.frames, self.stills, self.media, self.cards, self.rear)
         self.assertFalse(os.path.exists(os.path.join(self.media, "relativity-juice.mp4")))
 
     def test_refuses_when_one_frame_is_missing_in_the_middle(self):
         lavfi_frames(self.frames, 360)
+        rear_frames(self.rear)
         os.remove(os.path.join(self.frames, "0100.png"))
         with self.assertRaises(SystemExit):
-            make_media(self.frames, self.stills, self.media, self.cards)
+            make_media(self.frames, self.stills, self.media, self.cards, self.rear)
 
     def test_refuses_when_a_card_is_missing(self):
         lavfi_frames(self.frames, 360)
+        rear_frames(self.rear)
         os.remove(os.path.join(self.cards, "end.png"))
         with self.assertRaises(SystemExit) as ctx:
-            make_media(self.frames, self.stills, self.media, self.cards)
+            make_media(self.frames, self.stills, self.media, self.cards, self.rear)
         self.assertIn("bun run cards", str(ctx.exception))
         self.assertFalse(os.path.exists(os.path.join(self.media, "relativity-juice.mp4")))
 
+    def test_refuses_when_a_rear_frame_is_missing(self):
+        lavfi_frames(self.frames, 360)
+        rear_frames(self.rear)
+        os.remove(os.path.join(self.rear, "%04d.png" % ((REAR_START + REAR_END) // 2)))
+        with self.assertRaises(SystemExit) as ctx:
+            make_media(self.frames, self.stills, self.media, self.cards, self.rear)
+        self.assertIn("bun run rear", str(ctx.exception))
+        self.assertFalse(os.path.exists(os.path.join(self.media, "relativity-juice.mp4")))
+
+    def test_composite_overlays_the_window_and_copies_the_rest(self):
+        lavfi_frames(self.frames, 360)
+        rear_frames(self.rear)
+        out = os.path.join(self.dir, "out")
+        composite(self.frames, self.rear, out)
+        self.assertEqual(sorted(os.listdir(out)), ["%04d.png" % f for f in range(1, 361)])
+        for f in (1, REAR_START - 1, REAR_END + 1, 360):
+            with self.subTest(frame=f):
+                self.assertTrue(filecmp.cmp(os.path.join(self.frames, "%04d.png" % f), os.path.join(out, "%04d.png" % f), shallow=False))
+        mid = "%04d.png" % ((REAR_START + REAR_END) // 2)
+        for name in (mid, "0001.png"):  # one pixel format all through, or the cut's concat stalls
+            self.assertEqual(probe(os.path.join(out, name), "pix_fmt")["pix_fmt"], "rgba")
+        self.assertNotEqual(top_right(os.path.join(self.frames, mid)), top_right(os.path.join(out, mid)))
+        self.assertEqual(top_right(os.path.join(self.frames, "0001.png")), top_right(os.path.join(out, "0001.png")))
+
     def test_makes_mp4_contact_sheet_and_copies_beats(self):
         lavfi_frames(self.frames, 360)
-        make_media(self.frames, self.stills, self.media, self.cards)
+        rear_frames(self.rear)
+        make_media(self.frames, self.stills, self.media, self.cards, self.rear)
         self.assertEqual(sorted(os.listdir(self.media)),
-                         ["beat_build.png", "beat_cruise.png", "contact.png", "preview.gif", "relativity-juice.mp4"])
+                         ["beat_build.png", "beat_cruise.png", "beat_lookback.png", "contact.png", "end.png",
+                          "preview.gif", "relativity-juice.mp4", "title.png"])
+        lookback = probe(os.path.join(self.media, "beat_lookback.png"), "width,height")
+        self.assertEqual((lookback["width"], lookback["height"]), (960, 540))
         mp4 = os.path.join(self.media, "relativity-juice.mp4")
         info = streams(mp4)
         self.assertEqual([s["codec_type"] for s in info["streams"]], ["video", "audio"])
