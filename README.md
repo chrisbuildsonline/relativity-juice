@@ -14,6 +14,18 @@ What's in the video: a 2 s title card, the 15 s flight (360 frames), and a 2.5 s
 | **blueshift, frame 220** | **singularity, frame 340** |
 | ![blueshift](media/beat_blueshift.png) | ![singularity](media/beat_singularity.png) |
 
+## Looking back
+
+![looking back](media/beat_lookback.png)
+
+A rear-view inset (top-right, cyan border, fades in and out) shows what is behind the camera while the speed climbs: the city reddens, dims and empties out. That is the physics, not a filter. Aberration pulls every apparent direction toward the direction of travel, so the rear view empties. Dead behind, D = 1 / (γ(1 + β)): 0.90 at 0.1c, 0.23 at 0.9c, 0.022 at 0.999c. Observed wavelength is λ_rest / D, so warm windows slide into the infrared and fade to black, and the little light left is dimmed by the same D. The inset's label shows the live D. The window is frames 13 to 108 (4 s): at 0.1c the rear view has mean luminance 0.22, at 0.35c it is red and down to 0.03, and by 0.5c (frame 80) it is black.
+
+It is a second camera ("RearCam", `src/rear.py`) locked to the flight camera's position and turned 180° about Z. The Warp modifier still aberrates about the flight camera, so the same scene serves both views. `bun run rear` renders its 640x360 frames to `out/rear` (resumable, GPU if there is one) and `bun run media` composites them over the flight frames for the window in `src/media.py` (`REAR_START`..`REAR_END`). The media step takes the rear frames as a fifth argument: `python3 -m src.media [frames] [stills] [media] [cards] [rear]`. The cards are copied to `media/title.png` and `media/end.png`.
+
+| title card | end card |
+| --- | --- |
+| ![title card](media/title.png) | ![end card](media/end.png) |
+
 Every 30th frame of the final render:
 
 ![contact sheet](media/contact.png)
@@ -62,7 +74,8 @@ bun run render:status  # frames done, whether the render is alive, last log line
 bun run render:wait    # block until 360/360 frames or the render process ends (--max-min N to give up)
 bun run encode         # out/frames to out/relativity-juice.mp4 (H.264, 1920x1080, 24 fps)
 bun run cards          # title and end cards to out/cards/title.png and end.png (Cycles CPU, Blender's bundled font)
-bun run media          # runs cards, then cuts title + out/frames + end card with the sound bed to media/relativity-juice.mp4, plus media/preview.gif, media/contact.png and the beat stills
+bun run rear           # the rear-view inset frames to out/rear (640x360, resumable)
+bun run media          # runs cards, then overlays the rear view and cuts title + out/frames + end card with the sound bed to media/relativity-juice.mp4, plus media/preview.gif, media/contact.png, media/beat_lookback.png, the cards and the beat stills
 bun run wip            # Blender GUI screenshot of the scene to media/wip.png
 ```
 

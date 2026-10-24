@@ -42,6 +42,22 @@ class EntryFilesTest(unittest.TestCase):
         for name in ("blueshift", "build", "cruise", "singularity"):
             self.assertTrue(os.path.isfile(os.path.join(MEDIA, "beat_%s.png" % name)), name)
 
+    def test_lookback_still_and_cards_are_committed_pngs(self):
+        for name in ("beat_lookback.png", "title.png", "end.png"):
+            path = os.path.join(MEDIA, name)
+            self.assertTrue(os.path.isfile(path), name)
+            with open(path, "rb") as f:
+                self.assertEqual(f.read(8), b"\x89PNG\r\n\x1a\n", name)
+            px = read(path)
+            self.assertGreaterEqual(px.shape[1], 800, name)
+            self.assertGreater(os.path.getsize(path), 5000, name)
+
+    def test_readme_describes_the_lookback_inset(self):
+        with open(os.path.join(os.path.dirname(MEDIA), "README.md"), encoding="utf-8") as f:
+            text = f.read()
+        for needle in ("Looking back", "bun run rear", "media/beat_lookback.png", "media/title.png", "media/end.png"):
+            self.assertIn(needle, text)
+
 
 if __name__ == "__main__":
     unittest.main()
