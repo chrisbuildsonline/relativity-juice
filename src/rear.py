@@ -13,17 +13,34 @@ from src.relativity import beta_at, gamma
 
 LABEL_AT = (-1.7, -0.68, -5.0)  # text origin in camera space: lower-left, 5 units ahead of the rear camera
 LABEL_SIZE = 0.14
-PANEL_W = 1.2
+PANEL_W = 2.5  # wide enough for "D = 0.229  exposure +4.4 stops"
 LABEL_STRENGTH = 0.9
+STOPS_PER_HALVING = 1.25  # the display beaming already dims as D^2 (2 stops); this puts back most of it
+EXPOSURE_MAX = 4.0  # stops, reached at D = 0.109 (0.98c), past the end of the inset window
+
+
+def rear_d(beta):
+    return 1.0 / (gamma(beta) * (1.0 + beta))
+
+
+def exposure_stops(beta):
+    """Film exposure gain for the rear view: STOPS_PER_HALVING stops per halving of D, under the displayed D^2 dimming, capped.
+
+    The inset stays readable but still darkens as the speed climbs; the label states the gain, so nothing is hidden.
+    """
+    return min(EXPOSURE_MAX, -STOPS_PER_HALVING * math.log2(rear_d(beta)))
 
 
 def label_text(beta):
-    return "LOOKING BACK\nD = %.3f" % (1.0 / (gamma(beta) * (1.0 + beta)))
+    return "LOOKING BACK\nD = %.3f  exposure %+.1f stops" % (rear_d(beta), exposure_stops(beta))
 
 
 def _on_frame(scene, depsgraph=None):
+    beta = beta_at(time_of(scene.frame_current))
     if "RearLabel" in bpy.data.objects:
-        bpy.data.objects["RearLabel"].data.body = label_text(beta_at(time_of(scene.frame_current)))  # type: ignore
+        bpy.data.objects["RearLabel"].data.body = label_text(beta)  # type: ignore
+    rear = scene.camera is not None and scene.camera.name == "RearCam"
+    scene.view_settings.exposure = exposure_stops(beta) if rear else 0.0  # the gain belongs to the rear render only
 
 
 def add_rear(scene):
@@ -53,6 +70,6 @@ def add_rear(scene):
     _strip(scene, cam, "RearPanel", (x - 0.08, y - 0.26, z - 0.05), 0.42, _backing("RearPanel")).scale.x = PANEL_W
     if _on_frame not in bpy.app.handlers.frame_change_pre:
         bpy.app.handlers.frame_change_pre.append(_on_frame)
-    _on_frame(scene)
     scene.camera = cam
+    _on_frame(scene)
     return cam

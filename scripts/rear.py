@@ -1,6 +1,6 @@
 """Render the rear-view inset frames through the real render path (warp, motion blur, label).
 
--> out/rear/NNNN.png, 640x360, frames REAR_START..REAR_END (resumable; GPU CUDA if any, else CPU).
+-> out/rear/NNNN.png, REAR_W x REAR_H (800x450), frames REAR_START..REAR_END (resumable; GPU CUDA if any, else CPU).
 Probe: `-- OUT_DIR WIDTH HEIGHT SAMPLES FRAME...` renders just those frames and prints their mean luminance.
 """
 import os
@@ -12,14 +12,14 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from src.flight import time_of  # noqa: E402
-from src.media import REAR_END, REAR_START  # noqa: E402
+from src.media import REAR_END, REAR_H, REAR_START, REAR_W  # noqa: E402
 from src.rear import add_rear  # noqa: E402
 from src.relativity import beta_at  # noqa: E402
 from src.render import build_scene, render_frames  # noqa: E402
 
 a = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 out = a[0] if a else os.path.join(ROOT, "out", "rear")
-width, height, samples = (int(x) for x in a[1:4]) if len(a) >= 4 else (640, 360, 48)
+width, height, samples = (int(x) for x in a[1:4]) if len(a) >= 4 else (REAR_W, REAR_H, 48)
 frames = [int(x) for x in a[4:]] or list(range(REAR_START, REAR_END + 1))
 
 scene = build_scene()

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 from src.encode import tool
-from src.media import REAR_END, REAR_START, composite, make_media
+from src.media import REAR_END, REAR_H, REAR_START, REAR_W, composite, make_media
 
 
 def lavfi_frames(out, n):
@@ -105,6 +105,24 @@ class MediaTest(unittest.TestCase):
             self.assertEqual(probe(os.path.join(out, name), "pix_fmt")["pix_fmt"], "rgba")
         self.assertNotEqual(top_right(os.path.join(self.frames, mid)), top_right(os.path.join(out, mid)))
         self.assertEqual(top_right(os.path.join(self.frames, "0001.png")), top_right(os.path.join(out, "0001.png")))
+
+    def test_composite_inset_is_at_least_40_percent_of_the_width(self):
+        os.makedirs(self.frames)
+        subprocess.run([tool("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", "color=c=black:size=640x360:rate=24",
+                        "-frames:v", "360", "-pix_fmt", "rgba", os.path.join(self.frames, "%04d.png")], check=True)
+        os.makedirs(self.rear)
+        subprocess.run([tool("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", "color=c=0xc02010:size=%dx%d:rate=24" % (REAR_W, REAR_H),
+                        "-frames:v", str(REAR_END - REAR_START + 1), "-start_number", str(REAR_START),
+                        os.path.join(self.rear, "%04d.png")], check=True)
+        out = os.path.join(self.dir, "out")
+        composite(self.frames, self.rear, out)
+        mid = os.path.join(out, "%04d.png" % ((REAR_START + REAR_END) // 2))
+        row = subprocess.run([tool("ffmpeg"), "-v", "error", "-i", mid, "-vf", "crop=iw:1:0:ih/10,format=gray",
+                              "-f", "rawvideo", "-"], check=True, capture_output=True).stdout
+        lit = sum(1 for p in row if p > 0)  # the inset plus its 2 px border, on a black frame
+        border = max(1, round(640 * 3 / 1920))
+        self.assertGreaterEqual((lit - 2 * border) / 640, 0.4)
+        self.assertEqual(lit - 2 * border, 640 * REAR_W // 1920 // 2 * 2)
 
     def test_makes_mp4_contact_sheet_and_copies_beats(self):
         lavfi_frames(self.frames, 360)

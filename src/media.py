@@ -20,7 +20,9 @@ from src.sound import write_wav
 
 FRAME_START, FRAME_END = 1, 360  # src.flight needs numpy, which system python lacks
 TITLE, FLIGHT, END, FADE = 2.0, 15.0, 2.5, 0.5  # seconds: title card, the 360 frames, end card, fade each side
-REAR_START, REAR_END = 13, 108  # inset window, 4 s: city visible at 0.1c, red by 0.35c, black by ~0.5c (frame 80)
+REAR_START, REAR_END = 13, 150  # inset window, 5.75 s: ends at the first flight frame with beta >= 0.9 (tests pin it to beta_at)
+REAR_W, REAR_H = 800, 450  # rear frames' render size = the inset at 1920 wide (41.7%), so nothing is upscaled
+LOOKBACK = REAR_END - 12  # frame of media/beat_lookback.png: beta ~0.86, inset red and dim but readable, still before the fade-out
 REAR_FADE, BORDER = 0.4, "0x19b4ff"  # inset fade in/out seconds; border colour (the HUD cyan as displayed)
 GIF_START, GIF_LEN = 1.0, 6.0  # preview.gif excerpt of the flight, seconds: the inset, then the build
 
@@ -60,7 +62,7 @@ def composite(frames_dir, rear_dir, out_dir):
                             "-of", "json", os.path.join(frames_dir, "0001.png")], check=True, capture_output=True, text=True)
     info = json.loads(shape.stdout)["streams"][0]
     width, pix_fmt = info["width"], info["pix_fmt"]
-    inset, margin, border = width // 3 // 2 * 2, max(1, round(width * 24 / 1920)), max(1, round(width * 3 / 1920))
+    inset, margin, border = width * REAR_W // 1920 // 2 * 2, max(1, round(width * 24 / 1920)), max(1, round(width * 3 / 1920))
     os.makedirs(out_dir, exist_ok=True)
     for f in range(FRAME_START, FRAME_END + 1):
         if not REAR_START <= f <= REAR_END:
@@ -102,7 +104,7 @@ def make_media(frames_dir, stills_dir, media_dir, cards_dir=os.path.join(ROOT, "
                         "-frames:v", "1", "-update", "1", contact], check=True)
         print("media: %s" % contact)
         lookback = os.path.join(media_dir, "beat_lookback.png")
-        subprocess.run([tool("ffmpeg"), "-v", "error", "-y", "-i", os.path.join(shown, "%04d.png" % ((REAR_START + REAR_END) // 2)),
+        subprocess.run([tool("ffmpeg"), "-v", "error", "-y", "-i", os.path.join(shown, "%04d.png" % LOOKBACK),
                         "-vf", "scale=960:540:flags=lanczos", "-frames:v", "1", "-update", "1", lookback], check=True)
         print("media: %s" % lookback)
     copy_beats(stills_dir, media_dir)
