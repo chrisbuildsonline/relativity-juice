@@ -4,10 +4,13 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 import bpy
 import numpy as np
 
+import src.city
+from src.city import OVERHANG
 from src.encode import encode, tool
 from src.flight import FRAME_END, FRAME_START
 from src.render import build_scene, render_frames
@@ -62,6 +65,21 @@ class RenderTest(unittest.TestCase):
             render_frames(scene, d, [300], 96, 54, 8, "cpu", False)
             out[on] = read(os.path.join(d, "0300.png"))[..., :3]
         self.assertGreater(np.abs(out[True] - out[False]).mean(), 0.003)
+
+    def test_forward_view_never_sees_the_backdrop_behind_the_start(self):
+        build = src.city._building
+        skip_wall = lambda m, rng, x0, y0, *a: None if y0 < -OVERHANG else build(m, rng, x0, y0, *a)
+        out = {}
+        for wall in (True, False):
+            with mock.patch("src.city._building", build if wall else skip_wall):
+                scene = build_scene(length=1200.0)
+            d = os.path.join(self.dir, str(wall))
+            render_frames(scene, d, [1, 138, 300, 360], 96, 54, 4, "cpu", False)
+            out[wall] = [read(os.path.join(d, "%04d.png" % f)) for f in (1, 138, 300, 360)]
+        # not bit-identical: extra emitters shift Cycles' sampling a little. Measured mean |diff| 0.0046 / 0.0014 / 0.0001 / 0.0001
+        # at frames 1 / 138 / 300 / 360, scattered over the frame with a zero mean, against 0.03 to 0.05 for a change of seed
+        for a, b in zip(out[True], out[False]):
+            self.assertLess(float(np.abs(a - b).mean()), 0.01)
 
     def test_gauge_follows_frame_when_rendering(self):
         scene = build_scene(length=300.0)

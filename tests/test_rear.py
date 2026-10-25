@@ -18,7 +18,8 @@ from tests.test_look import frame_for
 from tests.test_render import read
 
 W, H = 96, 54
-READABLE = 0.05  # mean luminance; set from the probe in the README (0.1c view 0.152, uncompensated 0.9c view 0.015)
+READABLE = 0.02  # mean luminance; set from the probe in the README (0.1c view 0.178, uncompensated 0.9c view 0.007)
+CENTRE_STD = 0.02  # centre box luminance std at frame 138: 0.0016 with the street open, 0.041 with the skyline wall
 LUM = np.array([0.2126, 0.7152, 0.0722])
 
 
@@ -54,6 +55,15 @@ class RearTest(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.dir, True)
         bpy.ops.wm.read_factory_settings(use_empty=True)
+
+    def test_street_end_is_not_a_flat_hole_at_frame_138(self):
+        self.scene.camera = self.rear_cam
+        d = os.path.join(self.dir, "centre")
+        render_frames(self.scene, d, [138], 160, 90, 8, "cpu", False)
+        px = read(os.path.join(d, "0138.png"))[..., :3]
+        centre = px[90 * 2 // 10:90 * 7 // 10, 160 * 4 // 10:160 * 6 // 10] @ LUM  # where the open street end showed
+        print("rear centre box std=%.4f mean=%.4f" % (centre.std(), centre.mean()))
+        self.assertGreater(centre.std(), CENTRE_STD)
 
     def test_rear_cam_looks_back_from_the_flight_camera(self):
         self.scene.frame_set(200)

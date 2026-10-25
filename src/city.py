@@ -193,6 +193,12 @@ def build_city(seed=7, length=2000.0):
             x0 = STREET_X + rng.uniform(0, 8)
             _building(m, rng, x0 if side > 0 else -x0 - w, y, w, d, h)
             y += d + rng.uniform(0, 5)
+    # skyline wall closing the street behind the start: looking back, aberration blows the open end up to fill the view
+    x = -GROUND_X
+    while x < GROUND_X:
+        w, d = rng.uniform(14, 36), rng.uniform(12, 28)
+        _building(m, rng, x, -OVERHANG - d, w, d, float(np.clip(rng.lognormal(4.0, 0.5), 60, 260)))
+        x += w
 
     pts = np.concatenate(m.pts)
     mesh = bpy.data.meshes.new("City")

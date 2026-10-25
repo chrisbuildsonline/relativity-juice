@@ -7,7 +7,7 @@ import bpy
 import mathutils
 import numpy as np
 
-from src.city import CAM_Z, CORRIDOR_R, build_city, setup_view
+from src.city import CAM_Z, CORRIDOR_R, OVERHANG, STREET_X, build_city, setup_view
 
 LENGTH = 2000.0
 
@@ -117,9 +117,18 @@ class CityTest(unittest.TestCase):
                 self.assertNotEqual(n.bl_idname, "ShaderNodeTexImage")
 
     def test_flight_corridor_clear(self):
-        co = self.co
+        co = self.co[self.co[:, 1] >= 0.0]  # the camera flies y >= 0; the backdrop behind it closes the street
         d = np.hypot(co[:, 0], co[:, 2] - CAM_Z)
         self.assertGreaterEqual(d.min(), CORRIDOR_R)
+
+    def test_street_is_closed_behind_the_start(self):
+        co, emit = self.co, _attr(self.obj, "emit")
+        high = (co[:, 1] < -OVERHANG - 1.0) & (emit > 0) & (co[:, 2] > 60.0)  # lit faces high up, not the ground neon lines
+        self.assertGreater(np.count_nonzero(high & (np.abs(co[:, 0]) < STREET_X)), 200)
+        self.assertLess(co[high, 0].min(), -STREET_X)
+        self.assertGreater(co[high, 0].max(), STREET_X)
+        for lo in np.arange(-STREET_X, STREET_X, 8.0):  # no unlit gap across the corridor
+            self.assertGreater(np.count_nonzero(high & (co[:, 0] >= lo) & (co[:, 0] < lo + 8.0)), 20)
 
     def test_vertex_budget(self):
         self.assertLessEqual(len(self.co), 400_000)  # 300k until the lit faces got 2 unit edges (372k)
