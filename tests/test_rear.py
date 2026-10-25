@@ -18,7 +18,7 @@ from tests.test_look import frame_for
 from tests.test_render import read
 
 W, H = 96, 54
-READABLE = 0.05  # mean luminance; set from the probe in the README (rest view 0.22, uncompensated 0.9c view well under 0.01)
+READABLE = 0.05  # mean luminance; set from the probe in the README (0.1c view 0.152, uncompensated 0.9c view 0.015)
 LUM = np.array([0.2126, 0.7152, 0.0722])
 
 

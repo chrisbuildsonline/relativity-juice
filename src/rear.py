@@ -13,10 +13,10 @@ from src.relativity import beta_at, gamma
 
 LABEL_AT = (-1.7, -0.68, -5.0)  # text origin in camera space: lower-left, 5 units ahead of the rear camera
 LABEL_SIZE = 0.14
-PANEL_W = 2.5  # wide enough for "D = 0.229  exposure +4.4 stops"
+PANEL_W = 2.5  # wide enough for "D = 0.229  exposure +2.7 stops"
 LABEL_STRENGTH = 0.9
 STOPS_PER_HALVING = 1.25  # the display beaming already dims as D^2 (2 stops); this puts back most of it
-EXPOSURE_MAX = 4.0  # stops, reached at D = 0.109 (0.98c), past the end of the inset window
+EXPOSURE_MAX = 4.0  # stops, reached at D = 0.109 (0.977c), past the end of the inset window
 
 
 def rear_d(beta):
