@@ -14,6 +14,7 @@ GLOW = (0.0, 0.45, 1.0, 1.0)
 STRENGTH = 0.9 # AgX desaturates anything brighter towards white
 TEXT_SIZE = 0.12
 BACKING_ALPHA = 0.94  # share of the frame behind the gauge that is dimmed to black
+OVERLAY_PLATE_ALPHA = 1.0  # plate opacity in the post overlay (hud_only): opaque, so no city shows through the digits
 FRAME_LINE = 0.012
 
 
@@ -58,6 +59,17 @@ def _backing(name):
     links.new(black.outputs[0], mix.inputs[2])
     links.new(mix.outputs[0], out.inputs["Surface"])
     return mat
+
+
+def hud_only(scene):
+    """Turn a built scene into the gauge-only RGBA overlay (bun run hud): city hidden, opaque plate, no motion blur."""
+    for o in bpy.data.objects:
+        o.hide_render = not o.name.startswith("Gauge")
+    scene.render.film_transparent = True
+    scene.render.image_settings.color_mode = "RGBA"
+    scene.render.use_motion_blur = False
+    mix = [n for n in bpy.data.objects["GaugePanel"].data.materials[0].node_tree.nodes if n.type == "MIX_SHADER"][0]
+    mix.inputs["Fac"].default_value = OVERLAY_PLATE_ALPHA
 
 
 def _frame(scene, camera, name, loc, w, h, mat):

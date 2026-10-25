@@ -17,6 +17,7 @@
     "still": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py",
     "still:warp": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py -- 0.1 0.9 0.999",
     "rear": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/rear.py --",
+    "hud": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/hud.py --",
     "still:beats": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/beats.py",
     "still:gauge": "sh bin/quiet sh bin/blender -b --factory-startup --python-exit-code 1 --python scripts/still.py -- 0.9"
   },

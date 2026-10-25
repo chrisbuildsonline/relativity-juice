@@ -9,9 +9,9 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+from src.media import BEATS  # noqa: E402
 from src.render import build_scene, render_frames  # noqa: E402
 
-BEATS = {"cruise": 48, "build": 150, "blueshift": 220, "singularity": 340}
 OUT = os.path.join(ROOT, "out", "stills")
 os.makedirs(OUT, exist_ok=True)
 

@@ -1,11 +1,13 @@
-"""Submission media (no bpy): python3 -m src.media [frames_dir] [stills_dir] [media_dir] [cards_dir] [rear_dir].
+"""Submission media (no bpy): python3 -m src.media [frames_dir] [stills_dir] [media_dir] [cards_dir] [rear_dir] [hud_dir].
 
-Overlays the rear-view frames (out/rear, bun run rear) top-right on REAR_START..REAR_END, then cuts
+Overlays the rear-view frames (out/rear, bun run rear) top-right on REAR_START..REAR_END, then the gauge-only
+frames (out/hud, bun run hud) on all 360 flight frames and the beat stills (the baked gauge is see-through, so
+city geometry can cross the digits), then cuts
 out/cards/title.png + out/frames + out/cards/end.png with a synthesized sound bed (src/sound.py)
 into media/relativity-juice.mp4, makes media/preview.gif, tiles every 30th flight frame into
 media/contact.png (4x3 thumbnails), writes media/beat_lookback.png, and copies the cards and
 out/stills/beat_*.png next to them.
-Refuses unless all 360 frames, both cards (bun run cards) and the rear window frames exist.
+Refuses unless all 360 frames, both cards (bun run cards), the rear window frames and all 360 gauge frames exist.
 """
 import glob
 import json
@@ -24,6 +26,7 @@ REAR_START, REAR_END = 13, 150  # inset window, 5.75 s: ends at the first flight
 REAR_W, REAR_H = 800, 450  # rear frames' render size = the inset at 1920 wide (41.7%), so nothing is upscaled
 LOOKBACK = REAR_END - 12  # frame of media/beat_lookback.png: beta ~0.86, inset red and dim but readable, still before the fade-out
 REAR_FADE, BORDER = 0.4, "0x19b4ff"  # inset fade in/out seconds; border colour (the HUD cyan as displayed)
+BEATS = {"cruise": 48, "build": 150, "blueshift": 220, "singularity": 340}  # beat still (scripts/beats.py) -> its flight frame
 GIF_START, GIF_LEN = 1.0, 6.0  # preview.gif excerpt of the flight, seconds: the inset, then the build
 
 
@@ -55,13 +58,38 @@ def make_gif(frames_dir, out):
     print("media: %s" % out)
 
 
-def composite(frames_dir, rear_dir, out_dir):
-    """All flight frames to out_dir; REAR_START..REAR_END get the rear view top-right in a cyan border, faded in and out."""
-    n = REAR_END - REAR_START + 1
+def composite(frames_dir, rear_dir, out_dir, hud_dir):
+    """All flight frames to out_dir: the rear view on REAR_START..REAR_END, then the gauge overlay on every frame."""
+    with tempfile.TemporaryDirectory() as inset:
+        rear_inset(frames_dir, rear_dir, inset)
+        add_hud(inset, hud_dir, out_dir)
+
+
+def frame_info(frames_dir):
+    """(width, pix_fmt) of the first flight frame."""
     shape = subprocess.run([tool("ffprobe"), "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,pix_fmt",
                             "-of", "json", os.path.join(frames_dir, "0001.png")], check=True, capture_output=True, text=True)
     info = json.loads(shape.stdout)["streams"][0]
-    width, pix_fmt = info["width"], info["pix_fmt"]
+    return info["width"], info["pix_fmt"]
+
+
+def add_hud(frames_dir, hud_dir, out_dir):
+    """Overlay the gauge-only RGBA frame N (scaled to the frames' width) on frame N for all frames, in the frames' pixel format."""
+    width, pix_fmt = frame_info(frames_dir)
+    os.makedirs(out_dir, exist_ok=True)
+    graph = "[1:v]scale=%d:-2:flags=lanczos,format=rgba[h];[0:v][h]overlay=0:0:format=auto,format=%s" % (width, pix_fmt)
+    subprocess.run([tool("ffmpeg"), "-v", "error", "-y",
+                    "-framerate", "24", "-start_number", str(FRAME_START), "-i", os.path.join(frames_dir, "%04d.png"),
+                    "-framerate", "24", "-start_number", str(FRAME_START), "-i", os.path.join(hud_dir, "%04d.png"),
+                    "-filter_complex", graph, "-frames:v", str(FRAME_END), "-start_number", str(FRAME_START),
+                    os.path.join(out_dir, "%04d.png")], check=True)
+    print("media: gauge overlay on frames %d-%d" % (FRAME_START, FRAME_END))
+
+
+def rear_inset(frames_dir, rear_dir, out_dir):
+    """All flight frames to out_dir; REAR_START..REAR_END get the rear view top-right in a cyan border, faded in and out."""
+    n = REAR_END - REAR_START + 1
+    width, pix_fmt = frame_info(frames_dir)
     inset, margin, border = width * REAR_W // 1920 // 2 * 2, max(1, round(width * 24 / 1920)), max(1, round(width * 3 / 1920))
     os.makedirs(out_dir, exist_ok=True)
     for f in range(FRAME_START, FRAME_END + 1):
@@ -80,7 +108,7 @@ def composite(frames_dir, rear_dir, out_dir):
 
 
 def make_media(frames_dir, stills_dir, media_dir, cards_dir=os.path.join(ROOT, "out", "cards"),
-               rear_dir=os.path.join(ROOT, "out", "rear")):
+               rear_dir=os.path.join(ROOT, "out", "rear"), hud_dir=os.path.join(ROOT, "out", "hud")):
     missing = [f for f in range(FRAME_START, FRAME_END + 1) if not os.path.exists(os.path.join(frames_dir, "%04d.png" % f))]
     if missing:
         raise SystemExit("media: %d of %d frames missing in %s (first: %04d)" % (len(missing), FRAME_END, frames_dir, missing[0]))
@@ -90,11 +118,14 @@ def make_media(frames_dir, stills_dir, media_dir, cards_dir=os.path.join(ROOT, "
     no_rear = [f for f in range(REAR_START, REAR_END + 1) if not os.path.exists(os.path.join(rear_dir, "%04d.png" % f))]
     if no_rear:
         raise SystemExit("media: %d rear frames missing in %s (first: %04d): run `bun run rear` first" % (len(no_rear), rear_dir, no_rear[0]))
+    no_hud = [f for f in range(FRAME_START, FRAME_END + 1) if not os.path.exists(os.path.join(hud_dir, "%04d.png" % f))]
+    if no_hud:
+        raise SystemExit("media: %d gauge overlay frames missing in %s (first: %04d): run `bun run hud` first" % (len(no_hud), hud_dir, no_hud[0]))
     os.makedirs(media_dir, exist_ok=True)
     for card in cards:
         shutil.copyfile(card, os.path.join(media_dir, os.path.basename(card)))
     with tempfile.TemporaryDirectory() as shown:
-        composite(frames_dir, rear_dir, shown)
+        composite(frames_dir, rear_dir, shown, hud_dir)
         cut(shown, cards_dir, os.path.join(media_dir, "relativity-juice.mp4"))
         make_gif(shown, os.path.join(media_dir, "preview.gif"))
         contact = os.path.join(media_dir, "contact.png")
@@ -107,23 +138,35 @@ def make_media(frames_dir, stills_dir, media_dir, cards_dir=os.path.join(ROOT, "
         subprocess.run([tool("ffmpeg"), "-v", "error", "-y", "-i", os.path.join(shown, "%04d.png" % LOOKBACK),
                         "-vf", "scale=960:540:flags=lanczos", "-frames:v", "1", "-update", "1", lookback], check=True)
         print("media: %s" % lookback)
-    copy_beats(stills_dir, media_dir)
+    copy_beats(stills_dir, media_dir, hud_dir)
 
 
-def copy_beats(stills_dir, media_dir):
+def copy_beats(stills_dir, media_dir, hud_dir):
+    """Beat stills to media_dir, each with its beat's gauge overlay frame (scaled to 960x540) on top."""
     os.makedirs(media_dir, exist_ok=True)
     for beat in sorted(glob.glob(os.path.join(stills_dir, "beat_*.png"))):
-        shutil.copyfile(beat, os.path.join(media_dir, os.path.basename(beat)))
-        print("media: %s" % os.path.basename(beat))
+        name = os.path.basename(beat)
+        hud = os.path.join(hud_dir, "%04d.png" % BEATS.get(name[5:-4], 0))
+        if os.path.exists(hud):
+            subprocess.run([tool("ffmpeg"), "-v", "error", "-y", "-i", beat, "-i", hud, "-filter_complex",
+                            "[1:v]scale=960:540:flags=lanczos,format=rgba[h];[0:v][h]overlay=0:0:format=auto,format=rgba",
+                            "-frames:v", "1", "-update", "1", os.path.join(media_dir, name)], check=True)
+        else:
+            shutil.copyfile(beat, os.path.join(media_dir, name))
+        print("media: %s" % name)
 
 
 if __name__ == "__main__":
     a = sys.argv[1:]
     if a[:1] == ["--stills-only"]:  # refresh just the beat stills, no frames needed
-        copy_beats(os.path.join(ROOT, "out", "stills"), os.path.join(ROOT, "media"))
+        hud = os.path.join(ROOT, "out", "hud")
+        if not os.path.isdir(hud):
+            print("media: no %s, beat stills copied without the gauge overlay" % hud)
+        copy_beats(os.path.join(ROOT, "out", "stills"), os.path.join(ROOT, "media"), hud)
         sys.exit(0)
     make_media(a[0] if a else os.path.join(ROOT, "out", "frames"),
                a[1] if len(a) > 1 else os.path.join(ROOT, "out", "stills"),
                a[2] if len(a) > 2 else os.path.join(ROOT, "media"),
                a[3] if len(a) > 3 else os.path.join(ROOT, "out", "cards"),
-               a[4] if len(a) > 4 else os.path.join(ROOT, "out", "rear"))
+               a[4] if len(a) > 4 else os.path.join(ROOT, "out", "rear"),
+               a[5] if len(a) > 5 else os.path.join(ROOT, "out", "hud"))
