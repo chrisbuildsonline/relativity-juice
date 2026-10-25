@@ -18,9 +18,16 @@ What's in the video: a 2 s title card, the 15 s flight (360 frames), and a 2.5 s
 
 ![looking back](media/beat_lookback.png)
 
-A rear-view inset (top-right, cyan border, fades in and out) shows what is behind the camera while the speed climbs: the city reddens, dims and empties out. That is the physics, not a filter. Aberration pulls every apparent direction toward the direction of travel, so the rear view empties. Dead behind, D = 1 / (γ(1 + β)): 0.90 at 0.1c, 0.23 at 0.9c, 0.022 at 0.999c. Observed wavelength is λ_rest / D, so warm windows slide into the infrared and fade to black, and the little light left is dimmed by the same D. The inset's label shows the live D. The window is frames 13 to 108 (4 s): at 0.1c the rear view has mean luminance 0.22, at 0.35c it is red and down to 0.03, and by 0.5c (frame 80) it is black.
+A rear-view inset (top-right, cyan border, fades in and out) shows what is behind the camera while the speed climbs: the city reddens, dims and empties out. That is the physics, not a filter. Aberration pulls every apparent direction toward the direction of travel, so the rear view empties. Dead behind, D = 1 / (γ(1 + β)): 0.90 at 0.1c, 0.23 at 0.9c, 0.022 at 0.999c. Observed wavelength is λ_rest / D, so warm windows slide into the infrared and the little light left is dimmed by the same D.
 
-It is a second camera ("RearCam", `src/rear.py`) locked to the flight camera's position and turned 180° about Z. The Warp modifier still aberrates about the flight camera, so the same scene serves both views. `bun run rear` renders its 640x360 frames to `out/rear` (resumable, GPU if there is one) and `bun run media` composites them over the flight frames for the window in `src/media.py` (`REAR_START`..`REAR_END`). The media step takes the rear frames as a fifth argument: `python3 -m src.media [frames] [stills] [media] [cards] [rear]`. The cards are copied to `media/title.png` and `media/end.png`.
+The inset is 800x450 (41.7% of the frame width, rendered at that size so nothing is upscaled) and stays up for frames 13 to 150 (5.75 s), ending at the first frame where β reaches 0.9 (a test pins `REAR_END` to `beta_at`). Two honest display aids keep the red fade readable that far, and the label states both: "LOOKING BACK / D = 0.229  exposure +2.7 stops".
+
+- **Exposure compensation.** The rear render gets a film exposure gain of 1.25 stops per halving of D (`exposure_stops` in `src/rear.py`, capped at 4 stops; the flight camera's exposure is untouched). It undoes most of the D² dimming but not all of it, so the inset still darkens as the speed climbs.
+- **Near-IR tone-map.** Light shifted past 780 nm used to go to pure black (the shader's Wavelength node stops there), which no gain can lift. `display_infrared` in `src/relativity.py`, mirrored in the city shader, now shows it as a dim deep red: the red edge colour fades to 25% by 1000 nm and then falls as 1000 / λ_obs, so it keeps getting darker with D. Only the rear view ever gets there: anywhere ahead of the camera D ≥ γ > 1, so the forward flight frames are unchanged.
+
+Measured on the city alone (96x54, 4 samples, mean luminance): 0.1c 0.152, 0.35c 0.064, 0.9c 0.076 with the gain (0.015 without it), against 0.279 for the forward view at 0.9c. The 0.9c rear view stays redder than the forward one (R/B 1.08 against 0.73), and a test requires at least 0.05 there.
+
+It is a second camera ("RearCam", `src/rear.py`) locked to the flight camera's position and turned 180° about Z. The Warp modifier still aberrates about the flight camera, so the same scene serves both views. `bun run rear` renders its 800x450 frames to `out/rear` (resumable, GPU if there is one) and `bun run media` composites them over the flight frames for the window in `src/media.py` (`REAR_START`..`REAR_END`). `media/beat_lookback.png` is frame 138 (β 0.86), late in the window. The media step takes the rear frames as a fifth argument: `python3 -m src.media [frames] [stills] [media] [cards] [rear]`. The cards are copied to `media/title.png` and `media/end.png`.
 
 | title card | end card |
 | --- | --- |
@@ -74,7 +81,7 @@ bun run render:status  # frames done, whether the render is alive, last log line
 bun run render:wait    # block until 360/360 frames or the render process ends (--max-min N to give up)
 bun run encode         # out/frames to out/relativity-juice.mp4 (H.264, 1920x1080, 24 fps)
 bun run cards          # title and end cards to out/cards/title.png and end.png (Cycles CPU, Blender's bundled font)
-bun run rear           # the rear-view inset frames to out/rear (640x360, resumable)
+bun run rear           # the rear-view inset frames to out/rear (800x450, resumable)
 bun run media          # runs cards, then overlays the rear view and cuts title + out/frames + end card with the sound bed to media/relativity-juice.mp4, plus media/preview.gif, media/contact.png, media/beat_lookback.png, the cards and the beat stills
 bun run wip            # Blender GUI screenshot of the scene to media/wip.png
 ```
