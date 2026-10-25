@@ -92,6 +92,7 @@ UV_TINT_NM = (420.0, 530.0, 620.0)
 UV_TINT_RGB = ((0.2, 0.04, 1.0), (0.04, 0.35, 1.0), (0.8, 0.05, 1.0))
 _UV_RANGE_NM = 120.0  # blend finishes this far below the UV edge
 _IR_FADE_NM = 220.0  # red fade finishes this far above the IR edge (780 -> 1000)
+IR_FLOOR = 0.25  # share of the red edge colour left at 1000 nm, where the 1000 / lambda tail starts
 
 
 def wavelength_rgb(nm):
@@ -116,14 +117,30 @@ def uv_tint(base_nm):
     return np.stack([np.interp(nm, UV_TINT_NM, ch) for ch in np.asarray(UV_TINT_RGB).T], axis=-1)
 
 
+def display_infrared(lam_nm, g=1.0):
+    """Colour of light shifted past the red edge at Lorentz factor g (display tone-map, the near-IR twin of the deep-UV violet), (..., 3).
+
+    The Wavelength node and the eye stop at 780 nm; instead of cutting to black, the red edge colour fades
+    smoothly to IR_FLOOR by 1000 nm (as before) and then keeps falling as 1000 / lambda_obs, so the rear city
+    stays a dim deep red that gets darker with D, never black. Equals wavelength_rgb(780 nm) at the edge.
+    It all follows display_desaturation out (black by gamma 12): the forward view's late red rim must not turn
+    into a red artefact, and the rear inset ends long before that.
+    """
+    lam = np.asarray(lam_nm, dtype=float)
+    s = np.clip((lam - IR_EDGE_NM) / _IR_FADE_NM, 0.0, 1.0)
+    keep = 1.0 - np.asarray(display_desaturation(g)) / DISPLAY_DESAT_MAX
+    level = (IR_FLOOR + (1.0 - IR_FLOOR) * (1.0 - s * s * (3.0 - 2.0 * s))) * np.minimum(1.0, (IR_EDGE_NM + _IR_FADE_NM) / lam) * keep
+    return wavelength_rgb(IR_EDGE_NM) * level[..., None]
+
+
 def shift_rgb(base_nm, D):
     """Observed RGB of a source of wavelength base_nm seen with Doppler factor D.
 
     lambda_obs = base_nm / D (D > 0), broadcast over both inputs; output shape
     is the broadcast shape + (3,), always finite and in [0, 1]. Visible light
     uses wavelength_rgb. Below 380 nm the colour blends linearly from the
-    violet edge to the saturated uv_tint(base_nm) over 120 nm; above 780 nm the red edge
-    colour fades smoothly to black by 1000 nm. Beaming is not applied.
+    violet edge to the saturated uv_tint(base_nm) over 120 nm; above 780 nm it is
+    display_infrared (the red edge colour, fading to a dim floor by 1000 nm, then falling as 1 / lambda). Beaming is not applied.
     """
     d = np.asarray(D, dtype=float)
     if np.any(d <= 0.0):
@@ -135,11 +152,8 @@ def shift_rgb(base_nm, D):
     uv_edge = wavelength_rgb(UV_EDGE_NM)
     uv = uv_edge + t * (uv_tint(base_nm) - uv_edge)
 
-    s = np.clip((lam - IR_EDGE_NM) / _IR_FADE_NM, 0.0, 1.0)
-    ir = wavelength_rgb(IR_EDGE_NM) * (1.0 - s * s * (3.0 - 2.0 * s))[..., None]
-
     out = np.where((lam < UV_EDGE_NM)[..., None], uv, visible)
-    out = np.where((lam > IR_EDGE_NM)[..., None], ir, out)
+    out = np.where((lam > IR_EDGE_NM)[..., None], display_infrared(lam), out)
     return np.clip(out, 0.0, 1.0)
 
 

@@ -4,7 +4,7 @@ import math
 import bpy
 import numpy as np
 
-from src.relativity import DISPLAY_BEAM_CAP, DISPLAY_BEAM_EXP, UV_TINT_NM, UV_TINT_RGB
+from src.relativity import DISPLAY_BEAM_CAP, DISPLAY_BEAM_EXP, DISPLAY_DESAT_MAX, IR_FLOOR, UV_TINT_NM, UV_TINT_RGB, wavelength_rgb
 
 CAM_Z = 25.0  # camera path: x=0, z=CAM_Z, y from 0 to length
 CORRIDOR_R = 12.0  # clearance radius around the camera path
@@ -133,7 +133,7 @@ def _material():
                 n.inputs[i].default_value = v
         return n.outputs[2]
 
-    # UV: blend to relativity.uv_tint(base_nm) over UV_RANGE_NM below the edge; IR: fade to black by IR_FADE_NM above
+    # UV: blend to relativity.uv_tint(base_nm) over UV_RANGE_NM below the edge; IR: deep red, dimmer with D, never black
     tint = nodes.new("ShaderNodeValToRGB")
     span = UV_TINT_NM[-1] - UV_TINT_NM[0]
     tint.color_ramp.elements.new(0.5)
@@ -150,7 +150,16 @@ def _material():
     links.new(wave.outputs["Color"], bw.inputs["Color"])
     visible = mix(attr("desat").outputs["Fac"], wave.outputs["Color"], bw.outputs["Val"])
     uv = mix(ramp(lam, UV_EDGE_NM, UV_EDGE_NM - UV_RANGE_NM), visible, tint.outputs["Color"])
-    shifted = mix(ramp(lam, IR_EDGE_NM + IR_FADE_NM, IR_EDGE_NM, smooth=True), (0.0, 0.0, 0.0, 1.0), uv)
+    # past 780 nm: relativity.display_infrared, the red edge colour (the Wavelength node is nearly black there; desaturated like
+    # the rest late in the flight) down to IR_FLOOR by 1000 nm, then falling as 1000 / lambda
+    edge = wavelength_rgb(IR_EDGE_NM)
+    grey = float(edge @ (0.2126, 0.7152, 0.0722))
+    red = mix(attr("desat").outputs["Fac"], (*edge, 1.0), (grey, grey, grey, 1.0))
+    fade = math("MULTIPLY_ADD", ramp(lam, IR_EDGE_NM + IR_FADE_NM, IR_EDGE_NM, smooth=True), 1.0 - IR_FLOOR, IR_FLOOR)
+    tail = math("MULTIPLY", fade, math("DIVIDE", IR_EDGE_NM + IR_FADE_NM, lam, clamp=True))
+    keep = math("MULTIPLY_ADD", attr("desat").outputs["Fac"], -1.0 / DISPLAY_DESAT_MAX, 1.0)  # all of it follows the late-flight desaturation out
+    infrared = mix(math("MULTIPLY", tail, keep), (0.0, 0.0, 0.0, 1.0), red)
+    shifted = mix(ramp(lam, IR_EDGE_NM, IR_EDGE_NM + 1.0), uv, infrared)
     # beaming tone-mapped from D^4 to min(D^2, cap) (relativity.display_beaming); only camera rays see it,
     # so bounce light off the walls stays at rest brightness instead of whiting them out
     beam = math("MINIMUM", math("POWER", dop.outputs["Fac"], DISPLAY_BEAM_EXP), DISPLAY_BEAM_CAP)

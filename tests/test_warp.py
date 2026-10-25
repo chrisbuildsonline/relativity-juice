@@ -168,8 +168,12 @@ class WarpMaterialTest(unittest.TestCase):
         glow = [n for n in self.tree.nodes if n.bl_idname == "ShaderNodeEmission"][0]
         ir = self._src(glow.inputs["Color"])
         self.assertEqual(ir.bl_idname, "ShaderNodeMix")
-        uv = self._src(ir.inputs[7])  # RGBA B
+        uv = self._src(ir.inputs[6])  # RGBA A: the visible/UV colour; B is the near-IR deep red
         self.assertEqual(uv.bl_idname, "ShaderNodeMix")
+        level = self._src(self._src(ir.inputs[7]).inputs[0])  # relativity.display_infrared: tail * keep
+        self.assertEqual((level.bl_idname, level.operation), ("ShaderNodeMath", "MULTIPLY"))
+        keep = self._src(level.inputs[1])
+        self.assertEqual((keep.operation, self._src(keep.inputs[0]).attribute_name), ("MULTIPLY_ADD", "desat"))
         ramp = self._src(uv.inputs[7])  # UV colour = relativity.uv_tint(base_nm) as a colour ramp
         self.assertEqual(ramp.bl_idname, "ShaderNodeValToRGB")
         span = UV_TINT_NM[-1] - UV_TINT_NM[0]

@@ -5,6 +5,7 @@ import numpy as np
 from src.relativity import (
     DISPLAY_BEAM_CAP,
     DISPLAY_DESAT_MAX,
+    IR_EDGE_NM,
     UV_TINT_RGB,
     aberrate,
     beaming,
@@ -12,6 +13,7 @@ from src.relativity import (
     doppler,
     display_beaming,
     display_desaturation,
+    display_infrared,
     gamma,
     shift_rgb,
     uv_tint,
@@ -204,9 +206,24 @@ class ShiftRgbTest(unittest.TestCase):
         self.assertGreater(green[1] - blue[1], 0.2)
         np.testing.assert_allclose(uv_tint(np.array([420.0, 620.0, 700.0])), [UV_TINT_RGB[0], UV_TINT_RGB[2], UV_TINT_RGB[2]])
 
-    def test_extreme_redshift_is_near_black(self):
-        self.assertTrue(np.all(shift_rgb(550.0, 0.4) < 0.02))
+    def test_infrared_is_dim_deep_red_not_black(self):
+        c = shift_rgb(550.0, 0.229)  # dead behind at 0.9c: 2400 nm
+        self.assertGreater(c[0], 0.02)
+        self.assertLessEqual(c[0], wavelength_rgb(IR_EDGE_NM)[0])
+        self.assertEqual((c[1], c[2]), (0.0, 0.0))
 
+    def test_infrared_keeps_falling_with_d(self):
+        reds = [shift_rgb(550.0, d)[0] for d in (0.7, 0.4, 0.229, 0.1, 0.022)]
+        self.assertTrue(all(a > b > 0.0 for a, b in zip(reds, reds[1:])))
+
+    def test_display_infrared_matches_shift_rgb_past_the_edge(self):
+        lam = np.array([781.0, 1000.0, 2400.0, 20000.0])
+        np.testing.assert_allclose(display_infrared(lam), shift_rgb(lam, 1.0))
+        np.testing.assert_allclose(display_infrared(IR_EDGE_NM), wavelength_rgb(IR_EDGE_NM))
+
+    def test_display_infrared_goes_away_late_in_the_flight(self):
+        np.testing.assert_array_equal(display_infrared(2400.0, gamma(0.999)), 0.0)
+        self.assertGreater(display_infrared(2400.0, gamma(0.9))[0], 0.02)  # gamma 2.3: the rear window's range
     EPS = 1e-6
     TOL = 1e-4  # observed max jump across an edge is ~1e-6
 
@@ -220,10 +237,6 @@ class ShiftRgbTest(unittest.TestCase):
         lo = shift_rgb(780.0 - self.EPS, 1.0)
         hi = shift_rgb(780.0 + self.EPS, 1.0)
         np.testing.assert_allclose(lo, hi, atol=self.TOL)
-
-    def test_fades_to_zero_by_1000nm(self):
-        np.testing.assert_array_equal(shift_rgb(1000.0, 1.0), 0.0)
-        np.testing.assert_array_equal(shift_rgb(5000.0, 1.0), 0.0)
 
     def test_rejects_non_positive_d(self):
         with self.assertRaises(ValueError):
