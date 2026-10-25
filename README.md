@@ -27,7 +27,7 @@ The inset is 800x450 (41.7% of the frame width, rendered at that size so nothing
 
 Measured on the city alone (96x54, 4 samples, mean luminance): 0.1c 0.178, 0.35c 0.067, 0.9c 0.028 with the gain (0.007 without it), against 0.279 for the forward view at 0.9c. The 0.9c rear view stays redder than the forward one (R/B 7.3 against 0.73), and a test requires at least 0.02 there. A skyline wall closes the street 300 to 330 units behind the start (`build_city`): without it the open end filled the middle of the inset with flat world colour, which also flattered these numbers.
 
-It is a second camera ("RearCam", `src/rear.py`) locked to the flight camera's position and turned 180° about Z. The Warp modifier still aberrates about the flight camera, so the same scene serves both views. `bun run rear` renders its 800x450 frames to `out/rear` (resumable, GPU if there is one) and `bun run media` composites them over the flight frames for the window in `src/media.py` (`REAR_START`..`REAR_END`). `media/beat_lookback.png` is frame 138 (β 0.86), late in the window. The media step takes the rear frames as a fifth argument: `python3 -m src.media [frames] [stills] [media] [cards] [rear]`. The cards are copied to `media/title.png` and `media/end.png`.
+It is a second camera ("RearCam", `src/rear.py`) locked to the flight camera's position and turned 180° about Z. The Warp modifier still aberrates about the flight camera, so the same scene serves both views. `bun run rear` renders its 800x450 frames to `out/rear` (resumable, GPU if there is one) and `bun run media` composites them over the flight frames for the window in `src/media.py` (`REAR_START`..`REAR_END`). `media/beat_lookback.png` is frame 138 (β 0.86), late in the window. The media step takes the rear frames as a fifth argument and the gauge frames as a sixth: `python3 -m src.media [frames] [stills] [media] [cards] [rear] [hud]`. The cards are copied to `media/title.png` and `media/end.png`.
 
 | title card | end card |
 | --- | --- |
@@ -82,11 +82,12 @@ bun run render:wait    # block until 360/360 frames or the render process ends (
 bun run encode         # out/frames to out/relativity-juice.mp4 (H.264, 1920x1080, 24 fps)
 bun run cards          # title and end cards to out/cards/title.png and end.png (Cycles CPU, Blender's bundled font)
 bun run rear           # the rear-view inset frames to out/rear (800x450, resumable)
-bun run media          # runs cards, then overlays the rear view and cuts title + out/frames + end card with the sound bed to media/relativity-juice.mp4, plus media/preview.gif, media/contact.png, media/beat_lookback.png, the cards and the beat stills
+bun run hud            # the gauge alone as transparent RGBA frames to out/hud (1920x1080, 8 samples, resumable)
+bun run media          # runs cards, then overlays the rear view and the gauge (out/hud) and cuts title + out/frames + end card with the sound bed to media/relativity-juice.mp4, plus media/preview.gif, media/contact.png, media/beat_lookback.png, the cards and the beat stills
 bun run wip            # Blender GUI screenshot of the scene to media/wip.png
 ```
 
-`bun run render` is resumable: it skips frames that already exist, so run it again to continue after an interruption. A frame only gets its `.png` name once it is finished. `bun run media` refuses to run until all 360 frames exist.
+`bun run render` is resumable: it skips frames that already exist, so run it again to continue after an interruption. A frame only gets its `.png` name once it is finished. `bun run media` refuses to run until all 360 frames, the rear frames and all 360 `out/hud` frames exist. It takes the rear and gauge folders as its fifth and sixth arguments: `bun run media out/frames out/stills media out/cards out/rear out/hud`.
 
 Extra stills: `bun run still`, `still:warp`, `still:gauge` and `still:beats` render single frames to `out/stills/`.
 
@@ -102,7 +103,7 @@ What the script controls:
 - The warp (`src/warp.py`): a Geometry Nodes modifier, built node by node from Python, moves every vertex by the aberration formula and stores the Doppler factor per vertex. It reads the camera's position live.
 - The speed: β is keyframed on the modifier at every frame from `beta_at`, and the camera's Y position is keyframed at every frame from the integral of β·C. Interpolation is linear between frames.
 - The shader (`src/city.py`): a node material divides the rest wavelength by D, turns it into a colour, applies the UV tint and IR fade, and applies the display beaming to camera rays only.
-- The gauge (`src/gauge.py`): a HUD of a text object, a bar and a thin cyan outline over a see-through dark backing, all parented to the camera. A `frame_change_pre` handler writes the current β and γ into the text and scales the bar every frame.
+- The gauge (`src/gauge.py`): a HUD of a text object, a bar and a thin cyan outline over a see-through dark backing, all parented to the camera. A `frame_change_pre` handler writes the current β and γ into the text and scales the bar every frame. In the baked forward frames that backing is see-through, so warped city geometry can cross the digits. `bun run hud` (`hud_only` in `src/gauge.py`) therefore renders the same gauge again on its own, transparent, with an opaque plate, and `bun run media` lays it over all 360 frames and the beat stills, so the digits always sit on a clean dark plate.
 - The camera: a path along +Y at a fixed height, set from the flight code. Motion blur is on with shutter 0.3.
 - Render settings: Cycles, 1920x1080, 48 samples, denoising, AgX view transform, near-black world, 24 fps, frames 1 to 360.
 - The cut and sound (`scripts/cards.py`, `src/media.py`, `src/sound.py`): the cards are emissive text rendered by Blender, with the end card's β and γ computed from the flight. The sound is a drone and filtered noise written as a WAV with the standard library, pitch and loudness driven by a copy of `beta_at`, then muxed as AAC.
