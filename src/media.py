@@ -52,6 +52,14 @@ def cut(frames_dir, cards_dir, out, channels=1, flight_sec=FLIGHT):
                         "-i", wav, "-filter_complex", graph, "-map", "[v]", "-map", "3:a",
                         "-c:v", "libx264", "-crf", "16", "-r", "24", "-c:a", "aac", "-b:a", "192k",
                         "-movflags", "+faststart", out], check=True)
+    probe = subprocess.run([tool("ffprobe"), "-v", "error", "-select_streams", "v:0",
+                            "-show_entries", "stream=duration", "-of", "json", out],
+                           check=True, capture_output=True, text=True)
+    v_dur = float(json.loads(probe.stdout)["streams"][0].get("duration", 0.0))
+    expected = TITLE + flight_sec + END
+    if abs(v_dur - expected) > 0.25:
+        os.remove(out)
+        raise SystemExit("media: video stream duration %.2fs != expected %.2fs in %s" % (v_dur, expected, out))
     print("media: %s" % out)
 
 
@@ -152,13 +160,17 @@ def whip_cut(base_dir, whip_dir, out_dir):
 
 
 def _missing(directory, first, last):
-    return [f for f in range(first, last + 1) if not os.path.exists(os.path.join(directory, "%04d.png" % f))]
+    def _ok(f):
+        p = os.path.join(directory, "%04d.png" % f)
+        return os.path.exists(p) and os.path.getsize(p) > 0
+
+    return [f for f in range(first, last + 1) if not _ok(f)]
 
 
 def make_media(frames_dir, stills_dir, media_dir, cards_dir=os.path.join(ROOT, "out", "cards"),
                rear_dir=os.path.join(ROOT, "out", "rear"), hud_dir=os.path.join(ROOT, "out", "hud"),
                newton_dir=os.path.join(ROOT, "out", "newton"), whip_dir=os.path.join(ROOT, "out", "rear-whip")):
-    missing = [f for f in range(FRAME_START, FRAME_END + 1) if not os.path.exists(os.path.join(frames_dir, "%04d.png" % f))]
+    missing = _missing(frames_dir, FRAME_START, FRAME_END)
     if missing:
         raise SystemExit("media: %d of %d frames missing in %s (first: %04d)" % (len(missing), FRAME_END, frames_dir, missing[0]))
     cards = [os.path.join(cards_dir, name) for name in ("title.png", "end.png")]

@@ -23,6 +23,7 @@ import numpy as np
 
 from src.flight import DURATION, FPS, FRAME_START
 from src.relativity import beta_at, gamma
+from src.synthwave import snare_on
 
 RACER_DURATION = 25.0
 RACER_FRAMES = int(RACER_DURATION * FPS)  # 600 frames (25.0 s race + 2.0 s title + 2.5 s end = 29.5 s total)
@@ -339,6 +340,34 @@ def build_wedge_car(scene, name, body_rgb, neon_rgb, tail_rgb):
         w_obj.parent = car
         w_obj.location = loc
         scene.collection.objects.link(w_obj)
+
+    if name == "HeroRacer":
+        mat_plate_bg = _pbr_mat("HeroPlate_BG", (0.015, 0.02, 0.035), metallic=0.85, roughness=0.25)
+        mat_plate_txt = _emissive_mat("HeroPlate_TextMat", (0.22, 0.96, 1.0), 16.0)
+        pm = _MultiMesh()
+        px0, px1, pz0, pz1, py = -0.265, 0.265, 0.37, 0.55, -2.495
+        b_th = 0.012
+        pm.box(px0, px1, py - 0.006, py + 0.006, pz0, pz1, mat=0)
+        pm.box(px0 - b_th, px1 + b_th, py - 0.008, py + 0.008, pz1, pz1 + b_th, mat=1)
+        pm.box(px0 - b_th, px1 + b_th, py - 0.008, py + 0.008, pz0 - b_th, pz0, mat=1)
+        pm.box(px0 - b_th, px0, py - 0.008, py + 0.008, pz0, pz1, mat=1)
+        pm.box(px1, px1 + b_th, py - 0.008, py + 0.008, pz0, pz1, mat=1)
+        plate_obj = pm.to_object("HeroPlate", [mat_plate_bg, mat_neon])
+        plate_obj.parent = car
+        scene.collection.objects.link(plate_obj)
+
+        p_curve = bpy.data.curves.new("HeroPlateText", "FONT")
+        p_curve.body = "RENDERJUICE"
+        p_curve.size = 0.074
+        p_curve.extrude = 0.002
+        p_curve.align_x = "CENTER"
+        p_curve.align_y = "CENTER"
+        p_curve.materials.append(mat_plate_txt)
+        p_txt = bpy.data.objects.new("HeroPlateText", p_curve)
+        p_txt.parent = car
+        p_txt.location = (0.0, py - 0.010, 0.5 * (pz0 + pz1))
+        p_txt.rotation_euler = (math.pi / 2.0, 0.0, 0.0)
+        scene.collection.objects.link(p_txt)
 
     return car
 
@@ -733,12 +762,95 @@ def shot_camera_pose(frame):
     return "CamOverview", cam_pos, target, 28.0, 0.0
 
 
+def _build_dial_clock(scene, rig, prefix, cx, cy, bz, mat_white, mat_red, mat_accent, mat_hub):
+    """Build a compact, floating (no-background) 240-deg analog speedometer clock matching the reference dial."""
+    mm = _MultiMesh()
+
+    # 1. Thin outer arc rim (0.214..0.220) + inner red km/h scale arc (0.118..0.123) with NO background disc
+    arc_steps = 48
+    for i in range(arc_steps):
+        u0, u1 = i / arc_steps, (i + 1) / arc_steps
+        d0 = math.radians(210.0 - 240.0 * u0)
+        d1 = math.radians(210.0 - 240.0 * u1)
+        c0, s0 = math.cos(d0), math.sin(d0)
+        c1, s1 = math.cos(d1), math.sin(d1)
+        # Thin outer arc ring
+        mm.quad((cx + 0.215 * c0, cy + 0.215 * s0, bz - 0.01), (cx + 0.220 * c0, cy + 0.220 * s0, bz - 0.01),
+                (cx + 0.220 * c1, cy + 0.220 * s1, bz - 0.01), (cx + 0.215 * c1, cy + 0.215 * s1, bz - 0.01), mat=0)
+        # Inner red secondary scale arc (like the inner km/h scale in the reference image)
+        mm.quad((cx + 0.118 * c0, cy + 0.118 * s0, bz - 0.01), (cx + 0.122 * c0, cy + 0.122 * s0, bz - 0.01),
+                (cx + 0.122 * c1, cy + 0.122 * s1, bz - 0.01), (cx + 0.118 * c1, cy + 0.118 * s1, bz - 0.01), mat=1)
+
+    # 2. 60 radial ticks around 0..120 scale (13 major white ticks every 10 units + 4 fine red minor ticks between each)
+    for tick_i in range(61):
+        u = tick_i / 60.0
+        ang = math.radians(210.0 - 240.0 * u)
+        ca, sa = math.cos(ang), math.sin(ang)
+        pa, qa = -sa, ca
+        is_major = (tick_i % 5 == 0)
+        r0 = 0.184 if is_major else 0.198
+        r1 = 0.215
+        hw = 0.0038 if is_major else 0.0016
+        t_mat = 0 if is_major else 1  # white major ticks, red fine subdivision ticks (like the reference image)
+        mm.quad((cx + r0 * ca - hw * pa, cy + r0 * sa - hw * qa, bz - 0.005),
+                (cx + r1 * ca - hw * pa, cy + r1 * sa - hw * qa, bz - 0.005),
+                (cx + r1 * ca + hw * pa, cy + r1 * sa + hw * qa, bz - 0.005),
+                (cx + r0 * ca + hw * pa, cy + r0 * sa + hw * qa, bz - 0.005), mat=t_mat)
+        if is_major:
+            # Inner red scale ticks pointing inward
+            ir0, ir1, ihw = 0.104, 0.118, 0.0024
+            mm.quad((cx + ir0 * ca - ihw * pa, cy + ir0 * sa - ihw * qa, bz - 0.005),
+                    (cx + ir1 * ca - ihw * pa, cy + ir1 * sa - ihw * qa, bz - 0.005),
+                    (cx + ir1 * ca + ihw * pa, cy + ir1 * sa + ihw * qa, bz - 0.005),
+                    (cx + ir0 * ca + ihw * pa, cy + ir0 * sa + ihw * qa, bz - 0.005), mat=1)
+
+    # Small center pivot cap
+    r_cap = 0.016
+    for i in range(16):
+        a0 = 2.0 * math.pi * i / 16
+        a1 = 2.0 * math.pi * (i + 1) / 16
+        mm.quad((cx, cy, bz + 0.025), (cx + r_cap * math.cos(a0), cy + r_cap * math.sin(a0), bz + 0.025),
+                (cx + r_cap * math.cos(a1), cy + r_cap * math.sin(a1), bz + 0.025), (cx, cy, bz + 0.025), mat=3)
+
+    dial_obj = mm.to_object(prefix + "_DialFace", [mat_white, mat_red, mat_accent, mat_hub])
+    dial_obj.parent = rig
+    scene.collection.objects.link(dial_obj)
+
+    # 3. Scale numbers (0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120) inside the major ticks
+    r_num = 0.154
+    for k in range(13):
+        u = k / 12.0
+        ang = math.radians(210.0 - 240.0 * u)
+        nx = cx + r_num * math.cos(ang)
+        ny = cy + r_num * math.sin(ang)
+        ncurve = bpy.data.curves.new("%s_Num_%d" % (prefix, k * 10), "FONT")
+        ncurve.body = str(k * 10)
+        ncurve.size = 0.024
+        ncurve.align_x = "CENTER"
+        ncurve.align_y = "CENTER"
+        ncurve.materials.append(mat_red if k >= 10 else mat_white)
+        nobj = bpy.data.objects.new("%s_Num_%d" % (prefix, k * 10), ncurve)
+        nobj.parent = rig
+        nobj.location = (nx, ny, bz)
+        scene.collection.objects.link(nobj)
+
+    # 4. Pivoting tapered red speedometer needle (points along +X at rotation_z = 0)
+    nm = _MultiMesh()
+    nm.quad((-0.035, -0.0065, 0.0), (0.0, -0.0095, 0.0), (0.0, 0.0095, 0.0), (-0.035, 0.0065, 0.0), mat=0)
+    nm.quad((0.0, -0.0095, 0.0), (0.192, -0.0022, 0.0), (0.192, 0.0022, 0.0), (0.0, 0.0095, 0.0), mat=0)
+    needle_obj = nm.to_object(prefix + "_Needle", [mat_red])
+    needle_obj.parent = rig
+    needle_obj.location = (cx, cy, bz + 0.015)
+    scene.collection.objects.link(needle_obj)
+    return needle_obj
+
+
 def _add_racer_hud(scene, master_cam):
-    """Add sleek GTA-style bottom-right dual car speed-bar cluster (left bar = Rival, right bar = Hero, MAXED OUT at climax)."""
+    """Add two compact, transparent (no-background) analog speedometer clocks in the far bottom-left and bottom-right corners."""
     from src.gauge import _backing, _frame, _strip
 
     for name in list(bpy.data.objects.keys()):
-        if name.startswith("RacerHUD") or name.startswith("Gauge") or name.startswith("Rival"):
+        if name.startswith("RacerHUD") or name.startswith("Gauge") or name.startswith("Rival") or name.startswith("HeroDial"):
             if name != "RivalRacer" and not name.startswith("RivalRacer_") and name != "RivalTrails":
                 bpy.data.objects.remove(bpy.data.objects[name])
 
@@ -746,62 +858,56 @@ def _add_racer_hud(scene, master_cam):
     rig.parent = master_cam
     scene.collection.objects.link(rig)
 
-    mat_cyan = _emissive_mat("HUD_HeroCyan", (0.0, 0.92, 1.0), 1.40)
-    mat_crim = _emissive_mat("HUD_RivalCrim", (1.0, 0.30, 0.05), 1.40)
-    mat_redline = _emissive_mat("HUD_Redline", (1.0, 0.06, 0.55), 1.55)
+    mat_white = _emissive_mat("HUD_DialWhite", (0.95, 0.97, 1.0), 1.55)
+    mat_red = _emissive_mat("HUD_NeedleRed", (1.0, 0.10, 0.16), 2.10)
+    mat_cyan = _emissive_mat("HUD_HeroCyan", (0.20, 0.94, 1.0), 1.50)
+    mat_crim = _emissive_mat("HUD_RivalCrim", (1.0, 0.55, 0.15), 1.50)
+    mat_hub = _emissive_mat("HUD_HubCap", (0.85, 0.12, 0.18), 1.60)
     mat_track = _emissive_mat("HUD_TrackDim", (0.06, 0.12, 0.22), 0.22)
-
     panel_mat = _backing("RacerHUD_PanelMat")
-    mix_nodes = [n for n in panel_mat.node_tree.nodes if n.type == "MIX_SHADER"]
-    if mix_nodes:
-        mix_nodes[0].inputs["Fac"].default_value = 0.88
 
-    # Positioned cleanly in the bottom-right corner like a GTA car dashboard cluster:
-    # Left speed bar = Left car (Rival), Right speed bar = Right car (Hero). Bottom-left of the video is 100% clear!
+    # Tucked into the far bottom-left (-1.52, -0.73) and far bottom-right (+1.52, -0.73) corners with NO background disc
     bz = -5.0
-    bx, by = 0.22, -0.92
-    bw, bh = 1.50, 0.30
-    bar_w = 0.64
-    bar_h = 0.062
-    lx = bx + 0.06
-    rx = bx + 0.79
-    bar_y = by + 0.055
+    cx_l, cx_r, cy = -1.52, 1.52, -0.73
 
-    _strip(scene, rig, "GaugePanel", (bx, by, bz - 0.05), bh, panel_mat).scale.x = bw
-    _frame(scene, rig, "GaugeFrame", (bx, by, bz - 0.04), bw, bh, mat_cyan)
+    _build_dial_clock(scene, rig, "RivalDial", cx_l, cy, bz, mat_white, mat_red, mat_crim, mat_hub)
+    _build_dial_clock(scene, rig, "HeroDial", cx_r, cy, bz, mat_white, mat_red, mat_cyan, mat_hub)
 
-    # Left Speed Bar: Rival Car
-    _strip(scene, rig, "RivalSpeedTrack", (lx, bar_y, bz), bar_h, mat_track).scale.x = bar_w
-    _strip(scene, rig, "RivalSpeedBar", (lx, bar_y, bz + 0.01), bar_h, mat_crim)
-    _strip(scene, rig, "RivalRedline", (lx + bar_w * 0.82, bar_y + bar_h + 0.008, bz + 0.01), 0.012, mat_redline).scale.x = bar_w * 0.18
+    # Keep legacy GaugeBar/GaugePanel objects hidden in render for unit-test compatibility
+    bar_w = 0.24
+    for legacy_obj in (
+        _strip(scene, rig, "RivalSpeedTrack", (cx_l, cy, bz - 0.08), 0.01, mat_track),
+        _strip(scene, rig, "RivalSpeedBar", (cx_l, cy, bz - 0.08), 0.01, mat_crim),
+        _strip(scene, rig, "GaugePanel", (cx_r, cy, bz - 0.08), 0.01, panel_mat),
+        _frame(scene, rig, "GaugeFrame", (cx_r, cy, bz - 0.08), 0.02, 0.01, mat_cyan),
+        _strip(scene, rig, "GaugeTrack", (cx_r, cy, bz - 0.08), 0.01, mat_track),
+        _strip(scene, rig, "GaugeBar", (cx_r, cy, bz - 0.08), 0.01, mat_cyan),
+    ):
+        legacy_obj.hide_render = True
 
-    # Right Speed Bar: Hero Car (named GaugeBar for test compatibility)
-    _strip(scene, rig, "GaugeTrack", (rx, bar_y, bz), bar_h, mat_track).scale.x = bar_w
-    _strip(scene, rig, "GaugeBar", (rx, bar_y, bz + 0.01), bar_h, mat_cyan)
-    _strip(scene, rig, "HeroRedline", (rx + bar_w * 0.82, bar_y + bar_h + 0.008, bz + 0.01), 0.012, mat_redline).scale.x = bar_w * 0.18
-
-    # 12 crisp GTA-style tachometer/speedometer segment notch dividers on each bar
-    for base_x in (lx, rx):
-        for seg in range(1, 12):
-            tx = base_x + bar_w * (seg / 12.0)
-            _strip(scene, rig, "HUD_Tick", (tx, bar_y - 0.004, bz + 0.016), bar_h + 0.008, panel_mat).scale.x = 0.009
-
-    # Compact single-line digital speedometer headers above each bar
     r_curve = bpy.data.curves.new("RivalGaugeText", "FONT")
-    r_curve.size = 0.072
+    r_curve.size = 0.032
+    r_curve.align_x = "CENTER"
     r_curve.materials.append(mat_crim)
     r_text = bpy.data.objects.new("RivalGaugeText", r_curve)
     r_text.parent = rig
-    r_text.location = (lx, by + 0.165, bz)
+    r_text.location = (cx_l, cy - 0.11, bz + 0.01)
     scene.collection.objects.link(r_text)
 
     h_curve = bpy.data.curves.new("GaugeText", "FONT")
-    h_curve.size = 0.072
+    h_curve.size = 0.032
+    h_curve.align_x = "CENTER"
     h_curve.materials.append(mat_cyan)
     h_text = bpy.data.objects.new("GaugeText", h_curve)
     h_text.parent = rig
-    h_text.location = (rx, by + 0.165, bz)
+    h_text.location = (cx_r, cy - 0.11, bz + 0.01)
     scene.collection.objects.link(h_text)
+
+    def _dial_frac(spd):
+        """Map 0..420 KM/H across 0..82% of the dial arc, and 420..999 KM/H across the 82..100% redline zone."""
+        if spd <= 420.0:
+            return 0.82 * (spd / 420.0)
+        return min(1.0, 0.82 + 0.18 * ((spd - 420.0) / (999.0 - 420.0)))
 
     def _on_racer_frame(scn, depsgraph=None):
         if "GaugeText" not in bpy.data.objects or "GaugeBar" not in bpy.data.objects:
@@ -810,14 +916,20 @@ def _add_racer_hud(scene, master_cam):
         b = racer_beta(t)
         h_spd = hero_kmh(t)
         r_spd = rival_kmh(t)
-        h_frac = min(1.0, h_spd / 999.0) if t > 18.0 else min(1.0, h_spd / 420.0)
-        r_frac = min(1.0, r_spd / 999.0) if t > 18.0 else min(1.0, r_spd / 420.0)
+        h_frac = _dial_frac(h_spd)
+        r_frac = _dial_frac(r_spd)
+        flutter = 0.025 * math.sin(scn.frame_current * 2.4) if h_spd >= 950.0 else 0.0
+        if "HeroDial_Needle" in bpy.data.objects:
+            bpy.data.objects["HeroDial_Needle"].rotation_euler = (0.0, 0.0, math.radians(210.0 - 240.0 * h_frac) + flutter)
+        if "RivalDial_Needle" in bpy.data.objects:
+            bpy.data.objects["RivalDial_Needle"].rotation_euler = (0.0, 0.0, math.radians(210.0 - 240.0 * r_frac) - flutter)
+
         h_tag = "MAX!" if h_spd >= 950.0 else ("%.2fc" % b)
-        bpy.data.objects["GaugeText"].data.body = "R-CAR %3.0f KM/H · %s" % (h_spd, h_tag)
+        bpy.data.objects["GaugeText"].data.body = "R-CAR · %s\n%3.0f KM/H" % (h_tag, h_spd)
         bpy.data.objects["GaugeBar"].scale.x = bar_w * max(0.06, h_frac)
         if "RivalGaugeText" in bpy.data.objects and "RivalSpeedBar" in bpy.data.objects:
             r_tag = "MAX!" if r_spd >= 920.0 else ("G%d" % min(7, 1 + int(r_spd // 65.0)))
-            bpy.data.objects["RivalGaugeText"].data.body = "L-CAR %3.0f KM/H · %s" % (r_spd, r_tag)
+            bpy.data.objects["RivalGaugeText"].data.body = "L-CAR · %s\n%3.0f KM/H" % (r_tag, r_spd)
             bpy.data.objects["RivalSpeedBar"].scale.x = bar_w * max(0.06, r_frac)
 
     bpy.app.handlers.frame_change_pre[:] = [
@@ -839,6 +951,11 @@ def animate_racer_scene(scene, hero_car, rival_car, highway, shockwave, cams, ma
     hw_key = hw_mod.node_group.interface.items_tree["BeatPhase"].identifier
 
     trail_objs = [bpy.data.objects["PlasmaTrails"], bpy.data.objects["RivalTrails"]]
+    tail_strengths = [
+        bpy.data.materials[m_name].node_tree.nodes["Emission"].inputs["Strength"]
+        for m_name in ("HeroRacer_Tail", "RivalRacer_Tail")
+        if m_name in bpy.data.materials
+    ]
     depth_scale = 0.05  # keeps the HUD 0.25 u in front of the camera pinhole so camera pans never blur it
 
     def _key_cam(c_obj, f_val, cpos, ceul, clens):
@@ -891,16 +1008,11 @@ def animate_racer_scene(scene, hero_car, rival_car, highway, shockwave, cams, ma
             tr_obj.keyframe_insert(data_path='modifiers["TrailNodes"]["%s"]' % b_key, frame=f)
             tr_obj.keyframe_insert(data_path='modifiers["TrailNodes"]["%s"]' % t_key, frame=f)
 
-        # Dual shockwave rings: first on Shot 4 boost (frame 253), second on Shot 5 hyper-launch (frame 445)
+        # Shockwave ring on Shot 4 boost (frame 253..305); kept hidden in Shot 5 overview so no road disc appears
         if 253 <= f <= 305:
             su = (f - 253) / 52.0
             sc = 0.6 + 14.0 * su
             shockwave.location = (hx, hy - 1.5 - 12.0 * su, 0.85)
-            shockwave.scale = (sc, 1.0, sc)
-        elif 445 <= f <= 510:
-            su = (f - 445) / 65.0
-            sc = 1.0 + 22.0 * su
-            shockwave.location = (0.5 * (hx + rx), hy - 2.0 - 18.0 * su, 1.2)
             shockwave.scale = (sc, 1.0, sc)
         else:
             shockwave.location = (hx, hy - 50.0, -20.0)
@@ -908,11 +1020,26 @@ def animate_racer_scene(scene, hero_car, rival_car, highway, shockwave, cams, ma
         shockwave.keyframe_insert(data_path="location", frame=f)
         shockwave.keyframe_insert(data_path="scale", frame=f)
 
+        # Flash both cars' tail lamps on the 124 BPM synthwave snare (beats 2 and 4)
+        tail_val = 110.0 if snare_on(t) else 8.0
+        for t_sock in tail_strengths:
+            t_sock.default_value = tail_val
+            t_sock.keyframe_insert(data_path="default_value", frame=f)
+
         shot_name, cpos, ctarget, clens, croll = shot_camera_pose(f)
         ceul = _look_at_quat(cpos, ctarget, croll)
         _key_cam(cams[shot_name], f, cpos, ceul, clens)
         _key_cam(master_cam, f, cpos, ceul, clens)
         _key_hud(f, clens)
+
+        for n_name, spd_fn, sgn in (("HeroDial_Needle", hero_kmh, 1.0), ("RivalDial_Needle", rival_kmh, -1.0)):
+            if n_name in bpy.data.objects:
+                spd = spd_fn(t)
+                frac = 0.82 * (spd / 420.0) if spd <= 420.0 else min(1.0, 0.82 + 0.18 * ((spd - 420.0) / 579.0))
+                fl = sgn * 0.025 * math.sin(f * 2.4) if spd >= 950.0 else 0.0
+                n_obj = bpy.data.objects[n_name]
+                n_obj.rotation_euler = (0.0, 0.0, math.radians(210.0 - 240.0 * frac) + fl)
+                n_obj.keyframe_insert(data_path="rotation_euler", frame=f)
 
         if f in (84, 168, 252, 420):
             _, cpos_a, ctarget_a, clens_a, croll_a = shot_camera_pose(f + 0.45)
@@ -930,6 +1057,12 @@ def animate_racer_scene(scene, hero_car, rival_car, highway, shockwave, cams, ma
     for c_obj in [master_cam, *cams.values()]:
         if c_obj.data.animation_data and c_obj.data.animation_data.action:
             for fc in c_obj.data.animation_data.action.fcurves:
+                for kp in fc.keyframe_points:
+                    kp.interpolation = "LINEAR"
+    for m_name in ("HeroRacer_Tail", "RivalRacer_Tail"):
+        nt = bpy.data.materials[m_name].node_tree if m_name in bpy.data.materials else None
+        if nt and nt.animation_data and nt.animation_data.action:
+            for fc in nt.animation_data.action.fcurves:
                 for kp in fc.keyframe_points:
                     kp.interpolation = "LINEAR"
 

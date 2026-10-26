@@ -138,6 +138,13 @@ class MediaTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             make_media(self.frames, self.stills, self.media, self.cards, self.rear, self.hud, self.newton, self.whip)
 
+    def test_refuses_when_one_frame_is_zero_bytes(self):
+        lavfi_frames(self.frames, 360)
+        rear_frames(self.rear)
+        open(os.path.join(self.frames, "0133.png"), "wb").close()
+        with self.assertRaises(SystemExit):
+            make_media(self.frames, self.stills, self.media, self.cards, self.rear, self.hud, self.newton, self.whip)
+
     def test_refuses_when_a_card_is_missing(self):
         lavfi_frames(self.frames, 360)
         rear_frames(self.rear)

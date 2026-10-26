@@ -58,7 +58,7 @@ def render_frames(scene, out_dir, frames, width=1920, height=1080, samples=48, d
     done = []
     for f in frames:
         png = os.path.join(out_dir, "%04d.png" % f)
-        if os.path.exists(png):
+        if os.path.exists(png) and os.path.getsize(png) > 0:
             continue
         t0 = time.perf_counter()
         scene.frame_set(f)  # fires frame_change_pre: gauge text and bar

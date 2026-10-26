@@ -41,10 +41,12 @@ class RenderTest(unittest.TestCase):
         self.assertEqual(tiny(scene, self.dir, [1, 2, 3]), [1, 2, 3])
         self.assertEqual(sorted(os.listdir(self.dir)), ["0001.png", "0002.png", "0003.png"])
         os.remove(self.png(2))
-        m1, m3 = os.stat(self.png(1)).st_mtime_ns, os.stat(self.png(3)).st_mtime_ns
-        self.assertEqual(tiny(scene, self.dir, [1, 2, 3]), [2])
+        open(self.png(3), "wb").close()  # a 0-byte frame must be treated as missing and re-rendered
+        m1 = os.stat(self.png(1)).st_mtime_ns
+        self.assertEqual(tiny(scene, self.dir, [1, 2, 3]), [2, 3])
         self.assertEqual(sorted(os.listdir(self.dir)), ["0001.png", "0002.png", "0003.png"])
-        self.assertEqual((os.stat(self.png(1)).st_mtime_ns, os.stat(self.png(3)).st_mtime_ns), (m1, m3))
+        self.assertEqual(os.stat(self.png(1)).st_mtime_ns, m1)
+        self.assertGreater(os.path.getsize(self.png(3)), 0)
 
     def test_gauge_changes_between_frames(self):
         scene = build_scene(length=300.0)

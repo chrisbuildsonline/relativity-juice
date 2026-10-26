@@ -19,6 +19,15 @@ BEAT = 60.0 / BPM  # ~0.4839 s per beat
 STEP = BEAT / 4.0  # ~0.1210 s per 16th note
 DURATION, START, END = 15.0, 0.1, 0.999
 CUT_TIMES = (3.5, 7.0, 10.5, 17.5)  # camera cut timestamps inside the race (frames 85, 169, 253, 421)
+SNARE_GATE = 0.14  # seconds of full gated-snare sustain on beats 2 and 4
+
+
+def snare_on(t):
+    """True during the 0.14 s gated-reverb snare hit on beats 2 and 4 of each 124 BPM bar (race time t >= 0)."""
+    if t < 0.0:
+        return False
+    st = (t % (2.0 * BEAT)) - BEAT
+    return 0.0 <= st < SNARE_GATE
 
 # 4-bar chord progression in A minor: (bass_hz, (pad_chord_hz...))
 PROGRESSION = (

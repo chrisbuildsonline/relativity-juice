@@ -7,7 +7,7 @@ import wave
 import bpy
 
 from src.racer import RACER_FRAMES, SHOT_CUTS, WHEEL_R, build_racer_scene, hero_kmh, hero_x, hero_y, rival_kmh, rival_y, shot_camera_pose
-from src.synthwave import BPM, CUT_TIMES, RATE, synthesize_stereo, write_synthwave_wav
+from src.synthwave import BEAT, BPM, CUT_TIMES, RATE, snare_on, synthesize_stereo, write_synthwave_wav
 
 
 class RacerSceneTest(unittest.TestCase):
@@ -29,6 +29,10 @@ class RacerSceneTest(unittest.TestCase):
             self.assertEqual(len(car.data.materials), 4)
             wheels = [o for o in car.children if "Wheel" in o.name]
             self.assertEqual(len(wheels), 4)
+        self.assertIn("HeroPlate", bpy.data.objects)
+        self.assertIn("HeroPlateText", bpy.data.objects)
+        self.assertEqual(bpy.data.objects["HeroPlateText"].data.body, "RENDERJUICE")
+        self.assertEqual(bpy.data.objects["HeroPlateText"].parent, bpy.data.objects["HeroRacer"])
 
     def test_hero_overtakes_rival_and_both_blast_off_in_shot_5(self):
         self.assertLess(hero_y(0.0), rival_y(0.0))       # starts behind rival
@@ -72,6 +76,23 @@ class RacerSceneTest(unittest.TestCase):
         self.assertLess(shock.scale.x, 0.01)
         self.scene.frame_set(265)
         self.assertGreater(shock.scale.x, 2.0)
+        self.scene.frame_set(481)  # Shot 5 overview must keep the shockwave hidden so no road disc appears
+        self.assertLess(shock.scale.x, 0.01)
+
+    def test_tail_lamps_flash_on_snare_beats_2_and_4(self):
+        self.assertFalse(snare_on(0.0))
+        self.assertTrue(snare_on(BEAT))
+        self.assertFalse(snare_on(2.0 * BEAT))
+        self.assertTrue(snare_on(3.0 * BEAT))
+        # Frame 1 (t = 0.0 s) is off snare; frame 13 (t = 0.50 s, inside beat 2 snare window 0.4839..0.6239 s) is on snare
+        h_tail = bpy.data.materials["HeroRacer_Tail"].node_tree.nodes["Emission"].inputs["Strength"]
+        r_tail = bpy.data.materials["RivalRacer_Tail"].node_tree.nodes["Emission"].inputs["Strength"]
+        self.scene.frame_set(1)
+        self.assertAlmostEqual(h_tail.default_value, 8.0, places=1)
+        self.assertAlmostEqual(r_tail.default_value, 8.0, places=1)
+        self.scene.frame_set(13)
+        self.assertAlmostEqual(h_tail.default_value, 110.0, places=1)
+        self.assertAlmostEqual(r_tail.default_value, 110.0, places=1)
 
     def test_five_shot_cameras_and_top_overview_disappearance(self):
         markers = [(m.frame, m.name) for m in sorted(self.scene.timeline_markers, key=lambda m: m.frame)]
