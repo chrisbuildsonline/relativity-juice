@@ -24,6 +24,7 @@ from src.encode import ROOT, tool
 from src.sound import write_wav
 
 FRAME_START, FRAME_END = 1, 360  # src.flight needs numpy, which system python lacks
+RACER_FLIGHT, RACER_END = 25.0, 600  # 25.0 s (600 frames) for the 5-shot Neon Racer cut (29.5 s total with cards)
 TITLE, FLIGHT, END, FADE = 2.0, 15.0, 2.5, 0.5  # seconds: title card, the 360 frames, end card, fade each side
 REAR_START, REAR_END = 13, 150  # inset window, 5.75 s: ends at the first flight frame with beta >= 0.9 (tests pin it to beta_at)
 REAR_W, REAR_H = 800, 450  # rear frames' render size = the inset at 1920 wide (41.7%), so nothing is upscaled
@@ -35,15 +36,15 @@ BEATS = {"cruise": 48, "build": 150, "blueshift": 220, "singularity": 340}  # be
 GIF_START, GIF_LEN = 1.0, 6.0  # preview.gif excerpt of the flight, seconds: the inset, then the build
 
 
-def cut(frames_dir, cards_dir, out, channels=1):
+def cut(frames_dir, cards_dir, out, channels=1, flight_sec=FLIGHT):
     """Title card, flight frames and end card with fades through black, plus the sound bed, to an H.264 + AAC mp4."""
     scale = "scale=1920:1080:flags=lanczos,setsar=1"
     fades = lambda d: "fade=t=in:st=0:d=%g,fade=t=out:st=%g:d=%g" % (FADE, d - FADE, FADE)
     graph = ("[0:v]%s,%s[a];[1:v]%s,%s[b];[2:v]%s,%s[c];[a][b][c]concat=n=3:v=1:a=0,fps=24,format=yuv420p[v]"
-             % (scale, fades(TITLE), scale, fades(FLIGHT), scale, fades(END)))
+             % (scale, fades(TITLE), scale, fades(flight_sec), scale, fades(END)))
     with tempfile.TemporaryDirectory() as tmp:
         wav = os.path.join(tmp, "bed.wav")
-        write_wav(wav, TITLE, FLIGHT, END, channels=channels)
+        write_wav(wav, TITLE, flight_sec, END, channels=channels)
         subprocess.run([tool("ffmpeg"), "-v", "error", "-y",
                         "-loop", "1", "-framerate", "24", "-t", str(TITLE), "-i", os.path.join(cards_dir, "title.png"),
                         "-framerate", "24", "-pattern_type", "glob", "-i", os.path.join(frames_dir, "*.png"),
@@ -213,30 +214,30 @@ def copy_beats(stills_dir, media_dir, hud_dir):
 def make_racer_media(frames_dir=os.path.join(ROOT, "out", "racer"),
                      media_dir=os.path.join(ROOT, "media"),
                      cards_dir=os.path.join(ROOT, "out", "cards")):
-    """Build all submission media directly from the 360 native Blender Neon Racer frames + stereo 90s Synthwave audio."""
-    missing = _missing(frames_dir, FRAME_START, FRAME_END)
+    """Build all submission media directly from the 600 native Blender Neon Racer frames + stereo 90s Synthwave audio."""
+    missing = _missing(frames_dir, FRAME_START, RACER_END)
     if missing:
-        raise SystemExit("media: %d of %d racer frames missing in %s (first: %04d)" % (len(missing), FRAME_END, frames_dir, missing[0]))
+        raise SystemExit("media: %d of %d racer frames missing in %s (first: %04d)" % (len(missing), RACER_END, frames_dir, missing[0]))
     cards = [os.path.join(cards_dir, name) for name in ("title.png", "end.png")]
     if not all(os.path.exists(c) for c in cards):
         raise SystemExit("media: title/end cards missing in %s: run `bun run cards` first" % cards_dir)
     os.makedirs(media_dir, exist_ok=True)
     for card in cards:
         shutil.copyfile(card, os.path.join(media_dir, os.path.basename(card)))
-    cut(frames_dir, cards_dir, os.path.join(media_dir, "relativity-juice.mp4"), channels=2)
+    cut(frames_dir, cards_dir, os.path.join(media_dir, "relativity-juice.mp4"), channels=2, flight_sec=RACER_FLIGHT)
     make_gif(frames_dir, os.path.join(media_dir, "preview.gif"))
     contact = os.path.join(media_dir, "contact.png")
     subprocess.run([tool("ffmpeg"), "-v", "error", "-y", "-framerate", "24", "-pattern_type", "glob",
                     "-i", os.path.join(frames_dir, "*.png"),
-                    "-vf", "select='not(mod(n,30))',scale=320:180:flags=lanczos,tile=4x3",
+                    "-vf", "select='not(mod(n,50))',scale=320:180:flags=lanczos,tile=4x3",
                     "-frames:v", "1", "-update", "1", contact], check=True)
     print("media: %s" % contact)
     racer_beats = {
-        "beat_cruise.png": 36,       # Shot 1: Low Wheel/Exhaust Launch Cam
+        "beat_cruise.png": 36,       # Shot 1: Low Wheel/Exhaust Launch Cam + 3D Particle Sparks
         "beat_build.png": 115,       # Shot 2: Sweeping Helicopter Orbit Cam
-        "beat_lookback.png": 148,    # Shot 2: S-curve drift closing on RivalRacer
-        "beat_blueshift.png": 205,   # Shot 3: Door-to-door 3/4 Overtake Cam
-        "beat_singularity.png": 265, # Shot 4: Hyper-Boost Shockwave & Segmented Sun
+        "beat_lookback.png": 205,    # Shot 3: Door-to-door 3/4 Overtake Cam
+        "beat_blueshift.png": 310,   # Shot 4: Wide-FOV Hyper-Boost Chase Cam
+        "beat_singularity.png": 465, # Shot 5: High Top-Down Overview as cars hit MAX SPEED & vanish into the horizon
     }
     for name, f_num in racer_beats.items():
         dst = os.path.join(media_dir, name)

@@ -11,8 +11,7 @@ import bpy
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-from src.flight import DURATION  # noqa: E402
-from src.racer import build_racer_scene  # noqa: E402
+from src.racer import RACER_DURATION, build_racer_scene  # noqa: E402
 from src.sound import write_wav  # noqa: E402
 
 a = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -20,7 +19,7 @@ out_blend = a[0] if a else os.path.join(ROOT, "out", "neon-racer.blend")
 os.makedirs(os.path.dirname(out_blend), exist_ok=True)
 
 wav_path = os.path.join(os.path.dirname(out_blend), "synthwave.wav")
-write_wav(wav_path, 0.0, DURATION, 0.5, channels=2)
+write_wav(wav_path, 0.0, RACER_DURATION, 0.5, channels=2)
 
 scene = build_racer_scene()
 if not scene.sequence_editor:

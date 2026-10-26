@@ -18,7 +18,7 @@ BPM = 124.0
 BEAT = 60.0 / BPM  # ~0.4839 s per beat
 STEP = BEAT / 4.0  # ~0.1210 s per 16th note
 DURATION, START, END = 15.0, 0.1, 0.999
-CUT_TIMES = (3.5, 7.0, 10.5)  # camera cut timestamps inside the 15 s flight (frames 85, 169, 253)
+CUT_TIMES = (3.5, 7.0, 10.5, 17.5)  # camera cut timestamps inside the race (frames 85, 169, 253, 421)
 
 # 4-bar chord progression in A minor: (bass_hz, (pad_chord_hz...))
 PROGRESSION = (
@@ -85,11 +85,14 @@ def synthesize_stereo(title, flight, end):
 
     for i in range(n_samples):
         t = i * inv_rate
-        ft = t - title  # time inside the 15 s race
+        ft = t - title  # time inside the race (15 s or 25 s)
         in_flight = 0.0 <= ft < flight
-        b = beta(min(max(ft, 0.0), flight))
-        # Drive envelope climbs steadily across the 15 s race so the final boost hits hardest
-        drive = 0.35 + 0.65 * min(max(ft / flight, 0.0), 1.0) if in_flight else 0.25
+        # Scale time into [0, DURATION] so beta(t_norm) ramps from 0.1c to 0.999c across any flight length
+        t_norm = min(max(ft, 0.0), flight) * (DURATION / max(flight, 1e-6))
+        b = beta(t_norm)
+        # Drive envelope climbs steadily across the race and hits overdrive in the final top-overview hyper-launch
+        overdrive = 1.0 / (1.0 + math.exp(-(ft - 17.5) * 3.0)) if flight > 18.0 else 0.0
+        drive = min(1.15, 0.35 + 0.65 * min(max(ft / max(flight, 1.0), 0.0), 1.0) + 0.18 * overdrive) if in_flight else 0.25
 
         # Determine bar (4 beats) and 16th-note step relative to the race start
         race_beat = max(ft, 0.0) / BEAT
@@ -132,15 +135,17 @@ def synthesize_stereo(title, flight, end):
                     drm_l += (body * 0.55 + n_l) * s_scale
                     drm_r += (body * 0.55 + n_r) * s_scale
 
-            # 16th-note hi-hats (open hat on off-beats step % 4 == 2)
+            # 16th-note hi-hats (open hat on off-beats, double-time energy in the top-overview finale)
             ht = step_pos * STEP
-            h_decay = 22.0 if (step_in_bar % 4 == 2) else 65.0
-            hat = noise[(i * 3) & 4095] * math.exp(-ht * h_decay) * (0.10 + 0.12 * drive)
+            h_decay = 18.0 if (step_in_bar % 4 == 2 or overdrive > 0.5) else 65.0
+            hat = noise[(i * 3) & 4095] * math.exp(-ht * h_decay) * (0.10 + 0.14 * drive)
             drm_l += hat * 1.15
             drm_r += hat * 0.85
 
-            # Stereo Simmons/Linn tom fill leading into each camera cut (3.5 s, 7.0 s, 10.5 s)
+            # Stereo Simmons/Linn tom fill leading into each camera cut (3.5 s, 7.0 s, 10.5 s, 17.5 s)
             for cut_t in CUT_TIMES:
+                if cut_t >= flight:
+                    continue
                 dt_cut = cut_t - ft
                 if 0.0 < dt_cut <= 4.0 * STEP:
                     tom_idx = int((4.0 * STEP - dt_cut) / STEP)
@@ -180,33 +185,36 @@ def synthesize_stereo(title, flight, end):
         elif ft < 0.0:
             pad_gain = 0.045 * (0.4 + 0.6 * (t / max(title, 0.01)))
 
-        # 4. SOARING 90S LEAD SYNTH + STEREO DELAY (builds after the launch shot, octave boost at 10.5 s)
+        # 4. SOARING 90S LEAD SYNTH + STEREO DELAY (builds after launch, octave boost at 10.5 s, fifth harmony at 17.5 s)
         note_hz = LEAD_BARS[bar_idx][step_in_bar]
         if note_hz > 0.0:
             lead_freq = note_hz * (2.0 if ft >= 10.5 else 1.0)
         vib = 1.0 + 0.0045 * math.sin(two_pi * 5.8 * t)
         lead_ph = (lead_ph + two_pi * lead_freq * vib * inv_rate) % two_pi
-        lead_env = math.exp(-step_pos * (1.8 if note_hz > 0.0 else 3.2))
+        lead_env = math.exp(-step_pos * (1.6 if note_hz > 0.0 else 3.0))
         lead_active = 0.0
         if in_flight:
-            if ft >= 10.5:
-                lead_active = 0.24
+            if ft >= 17.5:
+                lead_active = 0.27
+            elif ft >= 10.5:
+                lead_active = 0.23
             elif ft >= 3.5:
                 lead_active = 0.16
             else:
                 lead_active = 0.06 * (ft / 3.5)
-        lead_sig = (_saw(lead_ph) + 0.4 * math.sin(lead_ph * 2.0)) * lead_env * lead_active
+        fifth_harm = 0.35 * math.sin(lead_ph * 1.5) if ft >= 17.5 else 0.0
+        lead_sig = (_saw(lead_ph) + 0.4 * math.sin(lead_ph * 2.0) + fifth_harm) * lead_env * lead_active
         echo_l = delay_l[di]
         echo_r = delay_r[di]
         delay_l[di] = lead_sig * 0.75 + echo_r * 0.36
         delay_r[di] = lead_sig * 0.55 + echo_l * 0.36
         di = (di + 1) % delay_samples
 
-        # 5. SYNCED TURBO ENGINE / PLASMA WHINE (rises with beta and resets slightly on each camera/gear cut)
-        gear_progress = (max(ft, 0.0) % 3.5) / 3.5 if ft < 10.5 else min(1.0, (ft - 10.5) / 4.5)
-        eng_hz = 68.0 + 195.0 * b + 55.0 * gear_progress
+        # 5. SYNCED TURBO ENGINE / PLASMA WHINE (rises with beta, screams into hyper-warp after 17.5 s)
+        gear_progress = (max(ft, 0.0) % 3.5) / 3.5 if ft < 17.5 else min(1.5, (ft - 17.5) / 4.5)
+        eng_hz = 68.0 + 210.0 * b + 65.0 * gear_progress + 110.0 * overdrive
         eng_ph = (eng_ph + two_pi * eng_hz * inv_rate) % two_pi
-        eng = (math.sin(eng_ph) + 0.35 * math.sin(eng_ph * 2.0)) * (0.04 + 0.13 * (b ** 2)) if in_flight else 0.0
+        eng = (math.sin(eng_ph) + 0.38 * math.sin(eng_ph * 2.0)) * (0.04 + 0.14 * (b ** 2) + 0.06 * overdrive) if in_flight else 0.0
 
         # Master stereo mix
         mix_l = drm_l + bass_lp * bass_amp + pad_l * pad_gain + lead_sig * 0.85 + echo_l * 0.45 + eng

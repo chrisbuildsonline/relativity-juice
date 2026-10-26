@@ -20,11 +20,11 @@ DIM = (GLOW[0], GLOW[1] * 0.5, GLOW[2] * 0.5, 1.0)  # same hue, quieter, for the
 
 # (text, size, y, colour): y in scene units, the camera sees 16 x 9
 TITLE = [("RELATIVITY JUICE", 1.25, 0.6, GLOW),
-         ("NEON RACER: 85 to 420 KM/H (%gc to %gc)" % (FIRST, beta_at(DURATION)), 0.45, -0.5, GLOW),
-         ("procedural 70s wedge supercars, Geometry Nodes, 90s Synthwave", 0.30, -1.6, DIM),
+         ("NEON RACER: 85 to 999 KM/H MAX! (%gc to %gc)" % (FIRST, beta_at(DURATION)), 0.43, -0.5, GLOW),
+         ("70s wedge supercars, Geometry Nodes particle sparks, 90s Synthwave", 0.29, -1.6, DIM),
          ("theme: Speed", 0.28, -3.4, DIM)]
-END = [("85 to 420 KM/H (%gc to %.4gc) in %g s" % (FIRST, LAST, DURATION), 0.68, 0.9, GLOW),
-       ("4 native Blender cameras, 124 BPM synthwave, γ %.2f to %.1f" % (gamma(FIRST), gamma(LAST)), 0.44, -0.4, GLOW),
+END = [("85 to 999 KM/H MAX! (%gc to %.4gc) in 25 s" % (FIRST, LAST), 0.65, 0.9, GLOW),
+       ("5 native Blender cameras, 124 BPM synthwave, γ %.2f to %.1f" % (gamma(FIRST), gamma(LAST)), 0.44, -0.4, GLOW),
        ("procedural Blender, Cycles, Geometry Nodes, no hand keys", 0.32, -2.0, DIM)]
 
 

@@ -24,7 +24,7 @@ class EntryFilesTest(unittest.TestCase):
         self.assertEqual(info["streams"][1]["codec_name"], "aac")
         duration = float(info["format"]["duration"])
         self.assertTrue(5 <= duration <= 30)
-        self.assertAlmostEqual(duration, 2.0 + 15.0 + 2.5, delta=0.1)  # title + flight + end card
+        self.assertIn(round(duration, 1), (19.5, 29.5))  # 19.5 s (360f) or 29.5 s (600f) cut with title + end cards
 
     def test_preview_gif_is_small(self):
         gif = os.path.join(MEDIA, "preview.gif")
