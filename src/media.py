@@ -35,7 +35,7 @@ BEATS = {"cruise": 48, "build": 150, "blueshift": 220, "singularity": 340}  # be
 GIF_START, GIF_LEN = 1.0, 6.0  # preview.gif excerpt of the flight, seconds: the inset, then the build
 
 
-def cut(frames_dir, cards_dir, out):
+def cut(frames_dir, cards_dir, out, channels=1):
     """Title card, flight frames and end card with fades through black, plus the sound bed, to an H.264 + AAC mp4."""
     scale = "scale=1920:1080:flags=lanczos,setsar=1"
     fades = lambda d: "fade=t=in:st=0:d=%g,fade=t=out:st=%g:d=%g" % (FADE, d - FADE, FADE)
@@ -43,13 +43,13 @@ def cut(frames_dir, cards_dir, out):
              % (scale, fades(TITLE), scale, fades(FLIGHT), scale, fades(END)))
     with tempfile.TemporaryDirectory() as tmp:
         wav = os.path.join(tmp, "bed.wav")
-        write_wav(wav, TITLE, FLIGHT, END)
+        write_wav(wav, TITLE, FLIGHT, END, channels=channels)
         subprocess.run([tool("ffmpeg"), "-v", "error", "-y",
                         "-loop", "1", "-framerate", "24", "-t", str(TITLE), "-i", os.path.join(cards_dir, "title.png"),
                         "-framerate", "24", "-pattern_type", "glob", "-i", os.path.join(frames_dir, "*.png"),
                         "-loop", "1", "-framerate", "24", "-t", str(END), "-i", os.path.join(cards_dir, "end.png"),
                         "-i", wav, "-filter_complex", graph, "-map", "[v]", "-map", "3:a",
-                        "-c:v", "libx264", "-crf", "16", "-r", "24", "-c:a", "aac", "-b:a", "160k",
+                        "-c:v", "libx264", "-crf", "16", "-r", "24", "-c:a", "aac", "-b:a", "192k",
                         "-movflags", "+faststart", out], check=True)
     print("media: %s" % out)
 
@@ -210,8 +210,51 @@ def copy_beats(stills_dir, media_dir, hud_dir):
         print("media: %s" % name)
 
 
+def make_racer_media(frames_dir=os.path.join(ROOT, "out", "racer"),
+                     media_dir=os.path.join(ROOT, "media"),
+                     cards_dir=os.path.join(ROOT, "out", "cards")):
+    """Build all submission media directly from the 360 native Blender Neon Racer frames + stereo 90s Synthwave audio."""
+    missing = _missing(frames_dir, FRAME_START, FRAME_END)
+    if missing:
+        raise SystemExit("media: %d of %d racer frames missing in %s (first: %04d)" % (len(missing), FRAME_END, frames_dir, missing[0]))
+    cards = [os.path.join(cards_dir, name) for name in ("title.png", "end.png")]
+    if not all(os.path.exists(c) for c in cards):
+        raise SystemExit("media: title/end cards missing in %s: run `bun run cards` first" % cards_dir)
+    os.makedirs(media_dir, exist_ok=True)
+    for card in cards:
+        shutil.copyfile(card, os.path.join(media_dir, os.path.basename(card)))
+    cut(frames_dir, cards_dir, os.path.join(media_dir, "relativity-juice.mp4"), channels=2)
+    make_gif(frames_dir, os.path.join(media_dir, "preview.gif"))
+    contact = os.path.join(media_dir, "contact.png")
+    subprocess.run([tool("ffmpeg"), "-v", "error", "-y", "-framerate", "24", "-pattern_type", "glob",
+                    "-i", os.path.join(frames_dir, "*.png"),
+                    "-vf", "select='not(mod(n,30))',scale=320:180:flags=lanczos,tile=4x3",
+                    "-frames:v", "1", "-update", "1", contact], check=True)
+    print("media: %s" % contact)
+    racer_beats = {
+        "beat_cruise.png": 36,       # Shot 1: Low Wheel/Exhaust Launch Cam
+        "beat_build.png": 115,       # Shot 2: Sweeping Helicopter Orbit Cam
+        "beat_lookback.png": 148,    # Shot 2: S-curve drift closing on RivalRacer
+        "beat_blueshift.png": 205,   # Shot 3: Door-to-door 3/4 Overtake Cam
+        "beat_singularity.png": 265, # Shot 4: Hyper-Boost Shockwave & Segmented Sun
+    }
+    for name, f_num in racer_beats.items():
+        dst = os.path.join(media_dir, name)
+        subprocess.run([tool("ffmpeg"), "-v", "error", "-y", "-i", os.path.join(frames_dir, "%04d.png" % f_num),
+                        "-vf", "scale=960:540:flags=lanczos", "-frames:v", "1", "-update", "1", dst], check=True)
+        print("media: %s (frame %d)" % (dst, f_num))
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
+    if a[:1] == ["--racer"]:
+        r_args = a[1:]
+        make_racer_media(
+            r_args[0] if r_args else os.path.join(ROOT, "out", "racer"),
+            r_args[1] if len(r_args) > 1 else os.path.join(ROOT, "media"),
+            r_args[2] if len(r_args) > 2 else os.path.join(ROOT, "out", "cards"),
+        )
+        sys.exit(0)
     if a[:1] == ["--stills-only"]:  # refresh just the beat stills, no frames needed
         hud = os.path.join(ROOT, "out", "hud")
         if not os.path.isdir(hud):

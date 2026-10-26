@@ -2,16 +2,16 @@
 
 [![relativity-juice preview](media/preview.gif)](media/relativity-juice.mp4)
 
-A 15-second procedural Blender animation: a cyberpunk megacity seen from a camera that accelerates from 0.1c to 0.999c, with the real special-relativity effects applied to what the camera sees. The effects shown are aberration, Doppler shift and beaming; Lorentz contraction appears through aberration, not as a separate step. The clip is 24 fps. Entry for the [RenderJuice Blender Animation & Programmatic Rendering Contest](https://programmatic-rendering-contest.devpost.com/), theme "Speed".
+A 15-second procedural Blender animation built for the [RenderJuice Blender Animation & Programmatic Rendering Contest](https://programmatic-rendering-contest.devpost.com/), theme "Speed" (24 fps, 1920x1080). A 1970s/80s synthwave wedge supercar (`HeroRacer`, cyan neon trim) launches down a wet-mirror neon highway, weaves through an S-curve under whipping magenta and cyan speed-gantries, drafts and overtakes a rival crimson wedge interceptor (`RivalRacer`) door-to-door, and ignites hyper-boost (`85 to 420 KM/H`, `0.1c to 0.999c`) through an expanding plasma shockwave ring into a segmented OutRun sunset sun. Alongside the Neon Racer scene (`src/racer.py`), the repository also includes our relativistic megacity engine (`src/city.py`, `src/warp.py`) where the effects shown are aberration, Doppler shift and beaming.
 
 [Watch the video (media/relativity-juice.mp4)](media/relativity-juice.mp4)
 
-What's in the video: a 2 s title card, the 15 s flight (360 frames), and a 2.5 s end card, joined with short fades through black (19.5 s in all). The sound bed is synthesized from γ(t): a drone that climbs in pitch with log γ and a noise rush that opens up with β.
+What's in the video: a 2 s Blender title card, the 15 s 4-shot race (360 frames rendered natively in Cycles GPU), and a 2.5 s Blender end card, joined with short fades through black (19.5 s in all). The stereo 48 kHz 90s Synthwave soundtrack (`src/synthwave.py` and `src/sound.py`) is synthesized in pure Python at 124 BPM: punchy analog kick, gated-reverb snare, 16th-note hi-hats, stereo Simmons tom fills synced to the 3 camera cuts (`3.5 s, 7.0 s, 10.5 s`), a rolling sawtooth arpeggiated bassline (`Am - F - C - G`) whose low-pass filter opens with speed, stereo chorus polysynth pads, a soaring 90s lead synth with dotted-eighth delay, and a turbo plasma engine whine driven by `beta_at(t)`.
 
-| cruise, frame 48 | build, frame 150 |
+| Shot 1: Launch Cam, frame 36 | Shot 2: Helicopter Sweep, frame 115 |
 | --- | --- |
 | ![cruise](media/beat_cruise.png) | ![build](media/beat_build.png) |
-| **blueshift, frame 220** | **singularity, frame 340** |
+| **Shot 3: 3/4 Overtake Cam, frame 205** | **Shot 4: Hyper-Boost & Sun, frame 265** |
 | ![blueshift](media/beat_blueshift.png) | ![singularity](media/beat_singularity.png) |
 
 ## Looking back
@@ -81,6 +81,9 @@ bun run render:status  # frames done, whether the render is alive, last log line
 bun run render:wait    # block until 360/360 frames or the render process ends (--max-min N to give up)
 bun run encode         # out/frames to out/relativity-juice.mp4 (H.264, 1920x1080, 24 fps)
 bun run cards          # title and end cards to out/cards/title.png and end.png (Cycles CPU, Blender's bundled font)
+bun run racer          # native Blender Synthwave Neon Racer: 360 frames to out/racer (Cycles GPU, 1920x1080)
+bun run blend          # export standalone out/neon-racer.blend with 4 cameras, Geometry Nodes, and VSE audio strip
+bun run media:racer    # build media/relativity-juice.mp4, preview.gif, contact.png, and beat stills from out/racer
 bun run rear           # the rear-view inset frames to out/rear (800x450, resumable)
 bun run newton         # unwarped frames 107-142 to out/newton (1920x1080, the left half of the split)
 bun run rear:whip      # full-frame rear frames 151-180 to out/rear-whip (1920x1080)
@@ -97,9 +100,17 @@ Blender is found via the `BLENDER` env var, then `~/opt/blender/blender`, then `
 
 ## Workflow notes
 
-Nothing is hand-modelled, hand-keyed or hand-painted. One script builds the whole scene each time, and the same code builds it for rendering, stills, tests and the screenshot (`build_scene` in `src/render.py`).
+Nothing is hand-modelled, hand-keyed or hand-painted. One script builds the whole scene each time, and the same code builds it for rendering, stills, tests, `.blend` export (`out/neon-racer.blend`), and the Blender GUI screenshot (`build_racer_scene` in `src/racer.py` and `build_scene` in `src/render.py`).
 
-What the script controls:
+What the script controls in the Synthwave Neon Racer scene (`src/racer.py`, `src/synthwave.py`, `scripts/blend.py`):
+
+- **Procedural 70s/80s Wedge Supercars (`HeroRacer` and `RivalRacer`):** Built in `bpy` from procedural quad profiles (`_MultiMesh`) with metallic clearcoat paint (`Principled BSDF`), tinted cockpit glass, emissive cyan/crimson edge piping, 5 rear window louvers, rear wing struts, full-width 80s grid lightbars, dual plasma afterburner nozzles, and 4 child wheel objects per car (`WheelFL`, `WheelFR`, `WheelRL`, `WheelRR`) with concentric glowing neon rims.
+- **F-Curve Vehicle Dynamics & Wheel Spin (`animate_racer_scene`):** Forward speed ramps from 85 to 420 KM/H with a hyper-boost surge at `t = 10.5 s` (frame 253). Lateral lane weaving (`hero_x`, `rival_x`) drives physically derived heading yaw and suspension roll banking via finite differences, while wheel rotation (`rotation_euler.x = -y / WHEEL_R`) is keyframed from exact arc length at every frame with Cycles 3D rotational motion blur.
+- **Geometry Nodes Environment & Plasma FX (`HighwayNodes` and `TrailNodes`):** Two `GeometryNodeTree` modifiers built node-by-node in Python: `HighwayNodes` on `SynthHighway` drives a 124 BPM harmonic wave across the flanking wireframe mountain ridges and overhead speed-gantries, while `TrailNodes` on `PlasmaTrails` ripples and flares the twin Tron-style plasma light-ribbons behind both cars' dual thrusters, paired with an expanding `BoostShockwave` ring at frame 253.
+- **4-Camera Choreography & In-Camera 3D Telemetry HUD:** Four Blender cameras (`CamLaunch` frames 1 to 84, `CamHeli` frames 85 to 168, `CamOvertake` frames 169 to 252, and `CamBoost` frames 253 to 360 with a 35 mm to 20 mm wide-FOV speed pull) are bound to `scene.timeline_markers` with shutter-safe pre-cut guard keyframes. The 3D telemetry HUD (`RacerHUD_Rig` + `GaugeText`) is parented directly to the camera in 3D space (`KM/H`, `β`, and `γ`), so every pixel renders natively inside Blender with zero post-composited `ffmpeg` overlays.
+- **124 BPM Stereo 90s Synthwave Soundtrack (`src/synthwave.py`):** Pure Python stereo 48 kHz synthesizer generating analog kick, gated-reverb snare, 16th-note hi-hats, stereo Simmons tom fills on the 3 camera cuts, sidechained 16th-note sawtooth arp bass (`Am - F - C - G`), stereo chorus polysynth pads, dotted-eighth delayed lead melody, and a synced turbo plasma engine layer.
+
+What the script controls in the relativistic city engine (`src/city.py`, `src/warp.py`):
 
 - The city (`src/city.py`): a seeded random generator (seed 7) lays out buildings, windows, neon strips, street lines and the ground as one mesh. Each vertex carries a rest wavelength and an emission value as attributes.
 - The warp (`src/warp.py`): a Geometry Nodes modifier, built node by node from Python, moves every vertex by the aberration formula and stores the Doppler factor per vertex. It reads the camera's position live.

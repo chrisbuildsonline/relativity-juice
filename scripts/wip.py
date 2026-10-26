@@ -14,15 +14,15 @@ import numpy as np
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from src.encode import tool  # noqa: E402
-from src.render import build_scene  # noqa: E402
+from src.racer import build_racer_scene  # noqa: E402
 
-FRAME = 220
+FRAME = 205
 PNG = os.path.join(ROOT, "media", "wip.png")
 os.makedirs(os.path.dirname(PNG), exist_ok=True)
 if os.path.exists(PNG):
     os.remove(PNG)  # a stale screenshot must not pass for a fresh one
 
-scene = build_scene()
+scene = build_racer_scene()
 scene.render.engine = "BLENDER_EEVEE_NEXT"  # viewport material shading only; nothing is rendered
 scene.frame_set(FRAME)
 TMP = os.path.join(tempfile.mkdtemp(), "wip.blend")
