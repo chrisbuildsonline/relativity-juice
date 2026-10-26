@@ -81,8 +81,8 @@ bun run render:status  # frames done, whether the render is alive, last log line
 bun run render:wait    # block until 360/360 frames or the render process ends (--max-min N to give up)
 bun run encode         # out/frames to out/relativity-juice.mp4 (H.264, 1920x1080, 24 fps)
 bun run cards          # title and end cards to out/cards/title.png and end.png (Cycles CPU, Blender's bundled font)
-bun run racer          # native Blender Synthwave Neon Racer: 360 frames to out/racer (Cycles GPU, 1920x1080)
-bun run blend          # export standalone out/neon-racer.blend with 4 cameras, Geometry Nodes, and VSE audio strip
+bun run racer          # native Blender Synthwave Neon Racer: 600 frames to out/racer (Cycles GPU, 1920x1080)
+bun run blend          # export standalone out/neon-racer.blend with 5 cameras, Geometry Nodes, and VSE audio strip
 bun run media:racer    # build media/relativity-juice.mp4, preview.gif, contact.png, and beat stills from out/racer
 bun run rear           # the rear-view inset frames to out/rear (800x450, resumable)
 bun run newton         # unwarped frames 107-142 to out/newton (1920x1080, the left half of the split)
@@ -123,7 +123,9 @@ What the script controls in the relativistic city engine (`src/city.py`, `src/wa
 
 ## How it was rendered
 
-Locally, on one RTX 3090 with Cycles on CUDA. 1920x1080, 24 fps, 360 frames (15 s), 48 samples, denoised, motion blur with a 0.3 shutter. About 25 to 33 seconds per frame, 3 hours for the whole clip. It was not rendered on the RenderJuice cloud. The frames were then cut with the two cards and a synthesized sound bed (`src/sound.py`, plain Python) and encoded to H.264 + AAC with ffmpeg (`bun run media`). The cut adds 4.5 s around the 15 s render and needed no re-render.
+Locally, on one RTX 3090 with Cycles on CUDA. It was not rendered on the RenderJuice cloud.
+- **Synthwave Neon Racer (`media/relativity-juice.mp4`, `bun run racer` + `bun run media:racer`):** 1920x1080, 24 fps, 600 frames (25.0 s race), 24 samples with GPU OpenImageDenoise, persistent data, and 3D motion blur (`shutter = 0.35`), about 1.6 s per frame (~17 minutes total on the RTX 3090), then joined with the 2.0 s title card, 2.5 s end card, and 48 kHz stereo 90s Synthwave WAV (`src/synthwave.py`) into the 29.5 s H.264 + AAC cut.
+- **Relativistic city pass (`bun run render` + `bun run media`):** 1920x1080, 24 fps, 360 frames (15 s), 48 samples, denoised, motion blur with a 0.3 shutter. About 25 to 33 seconds per frame, 3 hours for the whole clip, cut with the two cards and synthesized sound bed (`src/sound.py`) to H.264 + AAC with ffmpeg.
 
 ## Assets and AI disclosure
 
